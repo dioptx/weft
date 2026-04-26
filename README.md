@@ -2,7 +2,7 @@
 
 **Deterministic workflow tracking for Claude Code — smart skills, template management, dashboard auto-refresh.**
 
-![weft pitch — workflow status + guard rejection](docs/demos/pitch.gif)
+![weft pitch — agentic chain of skills with bounded loops + guards](docs/demos/pitch.gif)
 
 Weft turns ad-hoc agent sessions into auditable, event-sourced workflows. Define a template (plan → implement → verify, or an 11-step ticket-to-PR cycle), and weft enforces the order, blocks tools that violate the current step's guards, and refuses to let you `Stop` with steps still pending.
 
@@ -57,7 +57,62 @@ Run `/wf-start` with no args for the guided template picker.
 
 ![weft walkthrough — start, step, complete, audit](docs/demos/walkthrough.gif)
 
-See [docs/demo.md](docs/demo.md) for an annotated end-to-end walkthrough, and [docs/demos/](docs/demos/) for the asciicasts and recording scripts behind the GIFs above.
+See [docs/demo.md](docs/demo.md) for an annotated end-to-end walkthrough, and [docs/demos/](docs/demos/) for the asciicasts and recording scripts behind every GIF in this README.
+
+## Compose your own workflow
+
+Templates are JSON. You can author one inline and pipe it to `weft save-template` — no editor required, no scaffolder. The template lands in `.claude/weft/templates/` and is immediately available to `weft start`.
+
+![weft compose — heredoc → save-template → preview → start](docs/demos/compose.gif)
+
+```bash
+cat > flow.json << 'EOF'
+{
+  "name": "site-audit",
+  "steps": [
+    {"name": "crawl",  "skill": "/perplexity"},
+    {"name": "review", "skill": "/staff-review",
+     "guards": [{"command_pattern": "git push", "message": "no push during review"}]},
+    {"name": "fix",    "skill": "/fix-polish"},
+    {"name": "verify", "loop_back_to": "review", "max_iterations": 3,
+     "exit_condition": "no high-severity findings"}
+  ]
+}
+EOF
+weft save-template < flow.json
+weft start site-audit
+```
+
+For interactive composition based on what's in your current conversation, use `/wf-compose`.
+
+## Extend with your own skills
+
+Weft consumes Claude Code skills (`SKILL.md` files under `.claude/skills/`) as workflow steps. Drop a new skill in, reference it from a template via `skill: /<name>`, and weft picks it up.
+
+![weft extend — author SKILL.md, reference it from a template](docs/demos/extend.gif)
+
+```bash
+mkdir -p .claude/skills/site-audit
+cat > .claude/skills/site-audit/SKILL.md << 'EOF'
+---
+name: site-audit
+description: Crawl + audit a target site with lighthouse
+allowed-tools: [Bash, Read]
+---
+# Site Audit
+Run lighthouse against $URL, report findings.
+EOF
+
+cat <<'JSON' | weft save-template
+{
+  "name": "audit-cycle",
+  "steps": [
+    {"name": "audit", "skill": "/site-audit"},
+    {"name": "fix",   "skill": "/fix-polish"}
+  ]
+}
+JSON
+```
 
 ## Features
 
@@ -69,6 +124,21 @@ See [docs/demo.md](docs/demo.md) for an annotated end-to-end walkthrough, and [d
 - **Compaction-safe** — `PreCompact` hook writes a `context.md` projection so the next session resumes mid-workflow
 - **Live dashboard** — auto-refreshing TUI for monitoring active workflows
 - **Template management** — `/wf-new-template` and `/wf-edit-template` for creating and editing templates in-session
+
+## Auditable by design
+
+Every workflow transition is an append-only event in `.claude/weft/events.jsonl`. The `state.json` snapshot is just a projection — delete it and weft will rebuild it from events alone.
+
+![weft audit — query events, raw jsonl, rebuild from log](docs/demos/audit.gif)
+
+```bash
+weft query                       # human-readable timeline
+tail -3 .claude/weft/events.jsonl  # raw structured events
+rm .claude/weft/state.json       # nuke the snapshot
+weft rebuild                     # reconstruct from events alone
+```
+
+Use `weft query --type wf.step_changed`, `--last 50`, or `--workflow <id>` to filter.
 
 ## Repository Layout
 

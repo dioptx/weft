@@ -10,7 +10,8 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 - CI workflow running pytest on push and pull requests.
 - **User-global templates tier** — `~/.weft/templates/*.json` (override with `WEFT_USER_TEMPLATES_DIR`). Discovery order: project-local > user-global > plugin-bundled.
 - README sections: "Custom templates" (three tiers), "Why not just use TODOs?" (positioning), "Requirements".
-- README GIFs: 5-second pitch GIF at the top (status + guard rejection) and 25-second walkthrough GIF after Quick Start. Both recorded with asciinema → agg from the real `weft` CLI; reproducible scripts in `docs/demos/`.
+- README GIFs (5 total): pitch (agentic chain — preview + start), walkthrough (first-run lifecycle), compose (heredoc → save-template → preview → start), extend (author SKILL.md + reference it from a template), audit (query + raw jsonl + rebuild from events). All recorded with asciinema → agg from the real `weft` CLI; reproducible scripts in `docs/demos/`.
+- README sections: "Compose your own workflow", "Extend with your own skills", "Auditable by design".
 - `.claude-plugin/marketplace.json` so `/plugin marketplace add dioptx/weft` works.
 - `docs/demo.md` — annotated end-to-end walkthrough captured from a real workflow run.
 - `Makefile` with `install`, `test`, `lint`, `clean` targets for one-command contributor onboarding.
