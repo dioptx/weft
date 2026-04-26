@@ -2,6 +2,8 @@
 
 **Deterministic workflow tracking for Claude Code — smart skills, template management, dashboard auto-refresh.**
 
+![weft pitch — workflow status + guard rejection](docs/demos/pitch.gif)
+
 Weft turns ad-hoc agent sessions into auditable, event-sourced workflows. Define a template (plan → implement → verify, or an 11-step ticket-to-PR cycle), and weft enforces the order, blocks tools that violate the current step's guards, and refuses to let you `Stop` with steps still pending.
 
 ## Why this exists
@@ -51,7 +53,11 @@ The plugin auto-registers four hooks (`SessionStart`, `PreToolUse`, `PreCompact`
 /wf-dashboard            # open the live TUI
 ```
 
-Run `/wf-start` with no args for the guided template picker. See [docs/demo.md](docs/demo.md) for an annotated end-to-end walkthrough.
+Run `/wf-start` with no args for the guided template picker.
+
+![weft walkthrough — start, step, complete, audit](docs/demos/walkthrough.gif)
+
+See [docs/demo.md](docs/demo.md) for an annotated end-to-end walkthrough, and [docs/demos/](docs/demos/) for the asciicasts and recording scripts behind the GIFs above.
 
 ## Features
 
