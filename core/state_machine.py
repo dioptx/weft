@@ -1,9 +1,37 @@
 """Workflow state machine — pure state transitions + persistence."""
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 from . import weft_dir, now_iso, now_dt_and_iso, event_store
+
+
+def _detect_pr_number(project_dir: str | None = None) -> str | None:
+    """Return current PR number as a string, or None.
+
+    Order: CLAUDE_CODE_PR_NUMBER env (set by `claude --from-pr`) → `gh pr view`
+    against the current branch. Silent on failure.
+    """
+    env_pr = os.environ.get("CLAUDE_CODE_PR_NUMBER")
+    if env_pr and env_pr.isdigit():
+        return env_pr
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "view", "--json", "number", "-q", ".number"],
+            cwd=project_dir or None,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            num = result.stdout.strip()
+            if num.isdigit():
+                return num
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def _state_path(project_dir: str | None = None) -> Path:
@@ -46,9 +74,13 @@ def start_workflow(template: dict, session_id: str = "unknown",
         raise ValueError("Template must have at least one step")
 
     now_dt, now = now_dt_and_iso()
-    date_slug = now_dt.strftime("%Y%m%d")
     name = template["name"]
-    workflow_id = f"{name}-{date_slug}"
+    pr_num = _detect_pr_number(project_dir)
+    if pr_num:
+        workflow_id = f"{name}-pr{pr_num}"
+    else:
+        date_slug = now_dt.strftime("%Y%m%d")
+        workflow_id = f"{name}-{date_slug}"
 
     steps = []
     for i, step_def in enumerate(template["steps"]):
