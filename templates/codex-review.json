@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "name": "codex-review",
+  "description": "Dual-model code review: Claude staff-review + Codex adversarial review on any branch. Lightweight workflow for getting a thorough second opinion before pushing.",
+  "steps": [
+    {
+      "name": "setup",
+      "skill": null,
+      "on_fail": "block",
+      "guards": [
+        {
+          "command_pattern": "git push",
+          "message": "No push until both reviews complete"
+        }
+      ],
+      "description": "Identify the target: user provides a branch name, PR URL, or we use the current branch. Run git diff against the base branch (main/master) to understand the changeset. Save diff stats to .review/diff-summary.md."
+    },
+    {
+      "name": "parallel-review",
+      "skill": "/staff-review",
+      "on_fail": "retry",
+      "guards": [],
+      "description": "Parallel dual-model review. FIRST: kick off /codex:adversarial-review --base main --background (fires Codex async, returns immediately). THEN: run /staff-review on the full diff. Save Claude findings to .review/claude-findings.md. AFTER staff-review completes: run /codex:result to collect Codex output. Save to .review/codex-findings.md. Both reviews run against the same diff, different models, different biases. If Codex is unavailable, proceed with Claude findings only."
+    },
+    {
+      "name": "synthesize",
+      "skill": null,
+      "on_fail": "retry",
+      "guards": [],
+      "description": "Merge Claude and Codex findings into a unified review. For each finding: note which model caught it (Claude, Codex, or both). Findings caught by both models are higher confidence. Deduplicate overlapping issues. Write final review to .review/unified-review.md with sections: (1) Agreement (both found it), (2) Claude-only findings, (3) Codex-only findings, (4) Recommended actions ranked by severity."
+    },
+    {
+      "name": "fix-loop",
+      "skill": "/fix-polish",
+      "on_fail": "retry",
+      "guards": [],
+      "loop_back_to": "fix-loop",
+      "max_iterations": 4,
+      "exit_condition": "Zero CRITICAL or HIGH issues remain in the unified review. Tests pass.",
+      "description": "Address findings from the unified review, highest severity first. Run tests between each fix. If a Codex-only finding is ambiguous, use /codex:rescue to ask Codex to investigate further or propose a fix. Loop until no CRITICAL/HIGH remain."
+    },
+    {
+      "name": "final-check",
+      "skill": null,
+      "on_fail": "block",
+      "guards": [],
+      "description": "Run the full test suite. Verify no regressions. Print a summary of what was fixed and what was accepted as-is. Changes remain local -- push decision is up to the user."
+    }
+  ]
+}

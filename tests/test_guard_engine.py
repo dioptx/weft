@@ -2,7 +2,7 @@
 
 import pytest
 
-from core import guard_engine, state_machine
+from core import event_store, guard_engine, state_machine
 
 
 class TestGuardEvaluation:
@@ -138,6 +138,40 @@ class TestGuardEvaluation:
             pdir,
         )
         assert result is None
+
+    def test_emits_guard_blocked_event(self, project_dir, guarded_template):
+        """A blocked tool call appends a wf.guard_blocked event with the full schema."""
+        pdir = str(project_dir)
+        state = state_machine.start_workflow(guarded_template, "s1", pdir)
+
+        result = guard_engine.evaluate(
+            {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'wip'"}},
+            pdir,
+        )
+        assert result is not None and result["blocked"] is True
+
+        events = event_store.query(pdir, event_type="wf.guard_blocked")
+        assert len(events) == 1
+        data = events[0]["data"]
+        assert data == {
+            "workflow_id": state["workflow_id"],
+            "step_id": 1,
+            "step_name": "scope",
+            "pattern": "git (commit|push)",
+            "command": "git commit -m 'wip'",
+            "tool": "Bash",
+        }
+
+    def test_no_guard_blocked_event_when_allowed(self, project_dir, guarded_template):
+        """Allowed tool calls emit no wf.guard_blocked event."""
+        pdir = str(project_dir)
+        state_machine.start_workflow(guarded_template, "s1", pdir)
+
+        guard_engine.evaluate(
+            {"tool_name": "Bash", "tool_input": {"command": "ls -la"}},
+            pdir,
+        )
+        assert event_store.query(pdir, event_type="wf.guard_blocked") == []
 
     def test_string_guard_pattern(self, project_dir):
         """Guards can be plain strings (not dicts)."""

@@ -154,4 +154,4 @@ Three template tiers, in precedence order (project beats user beats bundled):
 <plugin>/templates/*.json                   # bundled with weft
 ```
 
-Use `/wf-new-template` to scaffold one in-session, or copy `templates/generic.json` from this repo as a starting point.
+Use `/wf-template` to scaffold one in-session, or copy `templates/generic.json` from this repo as a starting point.

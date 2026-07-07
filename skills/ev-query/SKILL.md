@@ -1,7 +1,7 @@
 ---
 name: ev-query
 description: "Query the weft event log with filters. Use only when user types /ev-query."
-argument-hint: "[event_type] [--tool X] [--last N] [--workflow ID] [--session ID]"
+argument-hint: "[event_type] [--last N] [--workflow ID] [--session ID]"
 allowed-tools: [Bash, Read]
 ---
 
@@ -27,5 +27,4 @@ $ARGUMENTS
 - `/ev-query` — count by event type
 - `/ev-query wf.step_changed` — all step transitions
 - `/ev-query --last 20` — last 20 events
-- `/ev-query --tool Bash --last 10` — last 10 Bash tool events
 - `/ev-query --workflow adhoc-20260406` — events for specific workflow
