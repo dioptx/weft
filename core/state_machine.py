@@ -1,9 +1,37 @@
 """Workflow state machine — pure state transitions + persistence."""
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 from . import weft_dir, now_iso, now_dt_and_iso, event_store
+
+
+def _detect_pr_number(project_dir: str | None = None) -> str | None:
+    """Return current PR number as a string, or None.
+
+    Order: CLAUDE_CODE_PR_NUMBER env (set by `claude --from-pr`) → `gh pr view`
+    against the current branch. Silent on failure.
+    """
+    env_pr = os.environ.get("CLAUDE_CODE_PR_NUMBER")
+    if env_pr and env_pr.isdigit():
+        return env_pr
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "view", "--json", "number", "-q", ".number"],
+            cwd=project_dir or None,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            num = result.stdout.strip()
+            if num.isdigit():
+                return num
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def _state_path(project_dir: str | None = None) -> Path:
@@ -46,15 +74,26 @@ def start_workflow(template: dict, session_id: str = "unknown",
         raise ValueError("Template must have at least one step")
 
     now_dt, now = now_dt_and_iso()
-    date_slug = now_dt.strftime("%Y%m%d")
     name = template["name"]
-    workflow_id = f"{name}-{date_slug}"
+    pr_num = _detect_pr_number(project_dir)
+    if pr_num:
+        workflow_id = f"{name}-pr{pr_num}"
+    else:
+        # Time-of-day in the slug so two same-day runs of one template in one
+        # project get distinct ids — otherwise both log under name-YYYYMMDD and
+        # /wf-analyze conflates them into one workflow. PR-scoped ids stay stable
+        # by design (one workflow per PR across days).
+        # ponytail: second-resolution; add a nonce only if sub-second concurrent
+        # starts in the same project ever actually collide.
+        date_slug = now_dt.strftime("%Y%m%d-%H%M%S")
+        workflow_id = f"{name}-{date_slug}"
 
     steps = []
     for i, step_def in enumerate(template["steps"]):
         step = {
             "id": i,
             "name": step_def["name"],
+            "description": step_def.get("description"),
             "status": "running" if i == 0 else "pending",
             "context": step_def.get("context", "inline"),
             "on_fail": step_def.get("on_fail", "block"),
@@ -65,6 +104,11 @@ def start_workflow(template: dict, session_id: str = "unknown",
             "loop_back_to": step_def.get("loop_back_to"),
             "max_iterations": step_def.get("max_iterations", 3),
             "exit_condition": step_def.get("exit_condition"),
+            "insights": step_def.get("insights"),
+            "executor": step_def.get("executor"),
+            "notify": step_def.get("notify"),
+            "workflow_run_id": None,
+            "verdict": None,
             "started_at": now if i == 0 else None,
             "completed_at": None,
             "retry_count": 0,
@@ -80,6 +124,7 @@ def start_workflow(template: dict, session_id: str = "unknown",
         "created_at": now,
         "session_id": session_id,
         "template": name,
+        "notify": template.get("notify", False),
         "steps": steps,
         "version": 1,
     }
@@ -89,6 +134,7 @@ def start_workflow(template: dict, session_id: str = "unknown",
     event_store.append(
         "wf.started",
         {"workflow_id": workflow_id, "name": name, "step_count": len(steps),
+         "notify": template.get("notify", False),
          "steps": template["steps"]},
         session_id=session_id,
         workflow_id=workflow_id,
@@ -98,8 +144,16 @@ def start_workflow(template: dict, session_id: str = "unknown",
     return state
 
 
-def _advance_to_next(state: dict) -> None:
-    """Move current_step to the next non-skipped pending step."""
+def _advance_to_next(state: dict,
+                     session_id: str = "unknown",
+                     project_dir: str | None = None) -> None:
+    """Move current_step to the next non-skipped pending step.
+
+    Emits wf.step_changed events for each auto-skipped step (to_status="skipped")
+    and for the next running step (to_status="running"). Without these, dashboards
+    have no signal for when each step BEGAN, only when it ended — making per-step
+    duration analysis impossible.
+    """
     now = now_iso()
     idx = state["current_step"] + 1
     steps = state["steps"]
@@ -110,6 +164,15 @@ def _advance_to_next(state: dict) -> None:
         if step.get("optional") and step.get("requires_skill"):
             step["status"] = "skipped"
             step["completed_at"] = now
+            event_store.append(
+                "wf.step_changed",
+                {"step_id": step["id"], "step_name": step["name"],
+                 "from_status": "pending", "to_status": "skipped",
+                 "reason": "auto-skipped (optional + requires_skill)"},
+                session_id=session_id,
+                workflow_id=state["workflow_id"],
+                project_dir=project_dir,
+            )
             idx += 1
             continue
         break
@@ -118,6 +181,14 @@ def _advance_to_next(state: dict) -> None:
         state["current_step"] = idx
         steps[idx]["status"] = "running"
         steps[idx]["started_at"] = now
+        event_store.append(
+            "wf.step_changed",
+            {"step_id": steps[idx]["id"], "step_name": steps[idx]["name"],
+             "from_status": "pending", "to_status": "running", "reason": "advance"},
+            session_id=session_id,
+            workflow_id=state["workflow_id"],
+            project_dir=project_dir,
+        )
     else:
         state["status"] = "complete"
 
@@ -148,7 +219,7 @@ def step_complete(state: dict, reason: str = "",
         project_dir=project_dir,
     )
 
-    _advance_to_next(state)
+    _advance_to_next(state, session_id, project_dir)
 
     if state["status"] == "complete":
         event_store.append(
@@ -171,6 +242,22 @@ def step_fail(state: dict, reason: str = "",
     policy = step["on_fail"]
     from_status = step["status"]
 
+    # Unattended + block: park the workflow instead of failing it, so a headless
+    # (shim) run can stop cleanly at the gate and resume later rather than hang.
+    # The step stays running (work isn't abandoned — it's waiting for a human);
+    # the workflow goes to 'waiting', which the Stop gate treats as a valid stop.
+    if policy == "block" and os.environ.get("WEFT_UNATTENDED") == "1":
+        state["status"] = "waiting"
+        event_store.append(
+            "wf.needs_human",
+            {"step_id": step["id"], "step_name": step["name"], "reason": reason},
+            session_id=session_id,
+            workflow_id=state["workflow_id"],
+            project_dir=project_dir,
+        )
+        save_state(state, project_dir)
+        return state
+
     if policy == "retry" and step["retry_count"] < 1:
         step["retry_count"] += 1
         to_status = "running"
@@ -178,7 +265,7 @@ def step_fail(state: dict, reason: str = "",
     elif policy == "continue":
         step["status"] = "failed"
         to_status = "failed"
-        _advance_to_next(state)
+        _advance_to_next(state, session_id, project_dir)
     else:
         step["status"] = "failed"
         state["status"] = "failed"
@@ -194,6 +281,42 @@ def step_fail(state: dict, reason: str = "",
         project_dir=project_dir,
     )
 
+    # Emit a workflow-level terminal event when on_fail=block lands a step in failed
+    # state with no retries left. Without this, blocked workflows have no terminal
+    # marker in events.jsonl, so dashboards can't compute total duration and downstream
+    # log aggregators (workflow-qa, weft-monitor, weft-tui) can't distinguish
+    # "running" from "blocked-and-abandoned".
+    if state["status"] == "failed":
+        event_store.append(
+            "wf.failed",
+            {"workflow_id": state["workflow_id"], "name": state["name"],
+             "blocked_at_step": step["name"], "reason": reason, "policy": policy},
+            session_id=session_id,
+            workflow_id=state["workflow_id"],
+            project_dir=project_dir,
+        )
+
+    save_state(state, project_dir)
+    return state
+
+
+def resume(state: dict, reason: str = "",
+           session_id: str = "unknown",
+           project_dir: str | None = None) -> dict:
+    """Resume a workflow parked in 'waiting' (by unattended on_fail=block). The
+    current step is still running; this just flips the workflow back to running so
+    /wf-step can advance it. The human is expected to have resolved the gate."""
+    if state.get("status") != "waiting":
+        raise ValueError(f"resume only valid for a waiting workflow, got: {state.get('status')}")
+    state["status"] = "running"
+    step = _current_step(state)
+    event_store.append(
+        "wf.resumed",
+        {"step_id": step["id"], "step_name": step["name"], "reason": reason},
+        session_id=session_id,
+        workflow_id=state["workflow_id"],
+        project_dir=project_dir,
+    )
     save_state(state, project_dir)
     return state
 
@@ -216,7 +339,7 @@ def step_skip(state: dict, reason: str = "",
         project_dir=project_dir,
     )
 
-    _advance_to_next(state)
+    _advance_to_next(state, session_id, project_dir)
     save_state(state, project_dir)
     return state
 
@@ -245,6 +368,37 @@ def step_retry(state: dict, reason: str = "",
 
     save_state(state, project_dir)
     return state
+
+
+def record_executor_result(state: dict, run_id: str, blocking: bool,
+                            verdict: dict | None = None, reason: str = "",
+                            session_id: str = "unknown",
+                            project_dir: str | None = None) -> dict:
+    """Record the result of a Workflow-tool executor run on the current step, then
+    auto-transition: step_complete if not blocking, step_fail (on_fail policy) if
+    blocking. Stores the Workflow runId so a crash-resume can re-invoke the workflow
+    with resumeFromRunId and replay cached sub-agents.
+
+    `verdict` is the structured summary the executor returned (findings, counts, etc.).
+    """
+    step = _current_step(state)
+    step["workflow_run_id"] = run_id
+    step["verdict"] = verdict
+
+    event_store.append(
+        "wf.executor_result",
+        {"step_id": step["id"], "step_name": step["name"],
+         "run_id": run_id, "blocking": blocking, "verdict": verdict},
+        session_id=session_id,
+        workflow_id=state["workflow_id"],
+        project_dir=project_dir,
+    )
+
+    if blocking:
+        return step_fail(state, reason or "executor: blocking findings",
+                         session_id, project_dir)
+    return step_complete(state, reason or "executor: passed",
+                         session_id, project_dir)
 
 
 def _find_step_by_name(state: dict, name: str) -> int | None:
@@ -297,6 +451,18 @@ def step_loop_back(state: dict, reason: str = "",
          "loop_back_to": target_name, "target_step_id": target_idx,
          "loop_count": step["loop_count"], "max_iterations": max_iter,
          "reason": reason},
+        session_id=session_id,
+        workflow_id=state["workflow_id"],
+        project_dir=project_dir,
+    )
+
+    # Also emit the step-started event for the target step so dashboards can
+    # compute per-iteration durations the same way as straight-line advances.
+    event_store.append(
+        "wf.step_changed",
+        {"step_id": target_idx, "step_name": target_name,
+         "from_status": "pending", "to_status": "running",
+         "reason": f"loop iteration {step['loop_count']} from {step['name']}"},
         session_id=session_id,
         workflow_id=state["workflow_id"],
         project_dir=project_dir,
@@ -373,6 +539,11 @@ def rebuild_from_events(project_dir: str | None = None,
                         "loop_back_to": sd.get("loop_back_to"),
                         "max_iterations": sd.get("max_iterations", 3),
                         "exit_condition": sd.get("exit_condition"),
+                        "insights": sd.get("insights"),
+                        "executor": sd.get("executor"),
+                        "notify": sd.get("notify"),
+                        "workflow_run_id": None,
+                        "verdict": None,
                         "started_at": ev["ts"] if i == 0 else None,
                         "completed_at": None,
                         "retry_count": 0,
@@ -395,6 +566,7 @@ def rebuild_from_events(project_dir: str | None = None,
                 "created_at": ev["ts"],
                 "session_id": ev.get("session_id", "unknown"),
                 "template": data.get("name", "unknown"),
+                "notify": data.get("notify", False),
                 "steps": steps,
                 "version": 1,
             }
@@ -409,6 +581,13 @@ def rebuild_from_events(project_dir: str | None = None,
                     step["completed_at"] = ev["ts"]
                 if data.get("to_status") == "running":
                     step["started_at"] = ev["ts"]
+
+        elif et == "wf.executor_result" and state:
+            sid = data.get("step_id", 0)
+            if 0 <= sid < len(state["steps"]):
+                step = state["steps"][sid]
+                step["workflow_run_id"] = data.get("run_id")
+                step["verdict"] = data.get("verdict")
 
         elif et == "wf.loop_iteration" and state:
             # Reset steps in the loop range back to pending
@@ -434,15 +613,26 @@ def rebuild_from_events(project_dir: str | None = None,
         elif et == "wf.aborted" and state:
             state["status"] = "aborted"
 
+        elif et == "wf.failed" and state:
+            state["status"] = "failed"
+
+        elif et == "wf.needs_human" and state:
+            state["status"] = "waiting"
+
+        elif et == "wf.resumed" and state:
+            state["status"] = "running"
+
     # Infer current_step from step statuses (instead of relying on
     # wf.step_changed "running" events, which _advance_to_next never emits).
     if state:
-        if state["status"] == "running":
+        if state["status"] in ("running", "waiting"):
+            # 'waiting' keeps its status; we only need the cursor to point at the
+            # parked (running) step, which the same scan finds.
             inferred = 0
             for i, s in enumerate(state["steps"]):
                 if s["status"] in ("pending", "running"):
                     inferred = i
-                    if s["status"] == "pending":
+                    if s["status"] == "pending" and state["status"] == "running":
                         s["status"] = "running"
                         s["started_at"] = s.get("started_at") or now_iso()
                     break

@@ -201,12 +201,14 @@ class TestMandate5_SessionIsolation:
         result = run_hook("weft-stop.sh", {"session_id": "test-session"}, str(pdir))
         assert result.returncode == 2
 
-    def test_unknown_session_blocks_all(self, project_dir, generic_template):
-        """Workflow with session_id='unknown' blocks any session."""
+    def test_unknown_session_warns_not_blocks(self, project_dir, generic_template):
+        """Workflow with session_id='unknown' warns but does NOT block (a stale
+        global workflow must not gate every unrelated session). SessionStart now
+        writes a real session id, so 'unknown' is the legacy/edge case."""
         pdir_str = str(project_dir)
         state_machine.start_workflow(generic_template, "unknown", pdir_str)
         result = run_hook("weft-stop.sh", {"session_id": "any-session"}, pdir_str)
-        assert result.returncode == 2
+        assert result.returncode == 0
 
 
 class TestMandate6_AtomicWrites:
@@ -403,12 +405,15 @@ class TestFeatureWorkflow:
         result = run_hook("weft-stop.sh", {"session_id": "feat-sess"}, pdir)
         assert result.returncode == 0
 
-        # Verify event log has full audit trail
+        # Verify event log has full audit trail. Each step now emits TWO
+        # wf.step_changed events (pending->running on advance, running->complete
+        # on terminal), so expect 2*N - 1 (the first step's running transition
+        # is implicit in wf.started, not a separate event).
         events = event_store.read_all(pdir)
         event_types = [e["event_type"] for e in events]
         assert event_types[0] == "wf.started"
         assert event_types[-1] == "wf.completed"
-        assert event_types.count("wf.step_changed") == step_count
+        assert event_types.count("wf.step_changed") == 2 * step_count - 1
 
     def test_midway_abort(self, project_dir):
         """Abort mid-workflow, verify stop hook allows exit."""

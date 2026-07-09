@@ -60,6 +60,6 @@ python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" start "step1,step2,step3"
 Display the workflow checklist and remind the user:
 - `/wf-step complete` to advance steps
 - `/wf-status` to check progress
-- `/wf-dashboard` to open the live monitoring TUI
+- `/wf-analyze` to review timing and recurring friction across runs
 - The Stop hook will prevent finishing with incomplete steps
 - If the current step has guards, explain what commands are blocked and why

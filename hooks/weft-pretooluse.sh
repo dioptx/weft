@@ -7,5 +7,9 @@ set -euo pipefail
 STATE="${CLAUDE_PROJECT_DIR:-.}/.claude/weft/state.json"
 [ -f "$STATE" ] || exit 0
 
+# Fast bail: no non-empty guards anywhere → no python cold-start. Empty guards
+# serialize as `"guards": []`; a non-empty array opens the bracket at line end.
+grep -qE '"guards": \[$' "$STATE" || exit 0
+
 INPUT=$(cat)
 echo "$INPUT" | python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" guard 2>&1
