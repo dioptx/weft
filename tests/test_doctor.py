@@ -3,6 +3,8 @@
 import json
 import re
 
+import pytest
+
 from core import templates, state_machine
 
 
@@ -13,6 +15,15 @@ def _bundled_generic() -> dict:
 
 
 class TestDoctor:
+    @pytest.fixture(autouse=True)
+    def _isolate_user_templates(self, tmp_path, monkeypatch):
+        # Isolate from the real ~/.weft/templates/ so these tests don't pick up
+        # whatever user-tier templates the host machine actually has deployed
+        # (e.g. the Mini's resolve-finding.json) — keeps the suite hermetic.
+        empty = tmp_path / "user-templates"
+        empty.mkdir()
+        monkeypatch.setenv("WEFT_USER_TEMPLATES_DIR", str(empty))
+
     def test_identical_copy_is_current(self, project_dir):
         tdir = project_dir / ".claude" / "weft" / "templates"
         tdir.mkdir(parents=True)

@@ -1,9 +1,18 @@
 """Tests for projections.py — context.md generation and status formatting."""
 
+import pytest
+
 from core import state_machine, projections
 
 
 class TestContextMd:
+    @pytest.fixture(autouse=True)
+    def _pin_claude_code_mode(self, monkeypatch):
+        # These tests assert the /weft:* slash-command rendering, which only
+        # appears in Claude-Code mode. Pin it so results don't depend on whether
+        # the ambient shell has CLAUDECODE set (they differ MacBook vs CI/Mini).
+        monkeypatch.setenv("WEFT_TERMINAL", "0")
+
     def test_generates_checklist(self, started_workflow):
         pdir, state = started_workflow
         md = projections.generate_context_md(state, str(pdir))
@@ -33,10 +42,8 @@ class TestContextMd:
         # Step 0 (gather) has no guards, so no "Active guards" section
         assert "Active guards" not in md
 
-    def test_includes_skill_hints(self, started_workflow, monkeypatch):
-        # Slash-command hints only render in Claude-Code mode; pin it so this
-        # is deterministic regardless of whether CI sets CLAUDECODE.
-        monkeypatch.setenv("WEFT_TERMINAL", "0")
+    def test_includes_skill_hints(self, started_workflow):
+        # Claude-Code mode pinned by the class autouse fixture.
         pdir, state = started_workflow
         md = projections.generate_context_md(state, str(pdir))
         assert "/weft:wf-step" in md
