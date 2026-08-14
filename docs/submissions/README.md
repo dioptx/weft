@@ -33,4 +33,4 @@ Rationale:
 
 ## After all submissions land
 
-Update `~/.claude/projects/-Users-dioptx/memory/feedback_public_readme_playbook.md` with which lists actually accepted weft, response times, and any maintainer feedback. That feedback closes the loop on the playbook for the next public launch.
+Record which lists actually accepted weft, response times, and any maintainer feedback, to close the loop on the playbook for the next public launch.

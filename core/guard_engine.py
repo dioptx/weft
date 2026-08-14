@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-from . import state_machine
+from . import event_store, state_machine
 
 
 def _approved_commands(project_dir: str | None) -> set[str]:
@@ -65,6 +65,15 @@ def evaluate(hook_input: dict, project_dir: str | None = None) -> dict | None:
                           f"(current step: '{current_name}')"
                     if isinstance(guard, dict) and guard.get("message"):
                         msg = guard["message"]
+                    event_store.append(
+                        "wf.guard_blocked",
+                        {"workflow_id": state["workflow_id"], "step_id": step["id"],
+                         "step_name": step_name, "pattern": pattern,
+                         "command": command, "tool": tool_name},
+                        session_id=state.get("session_id", "unknown"),
+                        workflow_id=state["workflow_id"],
+                        project_dir=project_dir,
+                    )
                     return {"blocked": True, "reason": msg}
             except re.error as e:
                 print(f"[weft] Warning: invalid guard pattern '{pattern}': {e}", file=sys.stderr)

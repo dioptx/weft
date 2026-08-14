@@ -33,13 +33,47 @@ def generate_context_md(state: dict, project_dir: str | None = None) -> str:
             suffix = f" (on_fail: {s['on_fail']}, retries: {s.get('retry_count', 0)})"
         opt = " [optional]" if s.get("optional") else ""
         skill = f" → invoke: {s['skill']}" if s.get("skill") else ""
+        execu = " → run: /wf-run-step" if s.get("executor") else ""
         loop = ""
         if s.get("loop_back_to"):
             loop = f" ↻ loops to {s['loop_back_to']} ({s.get('loop_count', 0)}/{s.get('max_iterations', 3)})"
-        lines.append(f"- [{mark}] {s['name']} ({s['status']}){suffix}{opt}{skill}{loop}")
+        lines.append(f"- [{mark}] {s['name']} ({s['status']}){suffix}{opt}{skill}{execu}{loop}")
+
+    if status in ("running", "waiting") and current < total:
+        cur_step = steps[current]
+        if cur_step.get("description"):
+            lines.append("")
+            lines.append(cur_step["description"])
+        if status == "waiting":
+            # Parked at a human gate (unattended on_fail=block) — resume, don't
+            # re-run the step's executor that just failed/blocked.
+            next_action = "/wf-resume"
+        elif cur_step.get("executor"):
+            next_action = "/wf-run-step"
+        else:
+            next_action = "/wf-step complete"
+        lines.append("")
+        lines.append(f"Next action: {next_action}")
+
+        suggest = list(cur_step.get("suggest") or [])
+        if cur_step.get("skill"):
+            suggest.insert(0, f"{cur_step['skill']} (this step)")
+        if suggest:
+            lines.append(f"Suggested commands: {', '.join(suggest)}")
+        for insight in cur_step.get("insights") or []:
+            lines.append(f"  💡 {insight}")
 
     if status == "running" and current < total:
         cur_step = steps[current]
+        ex = cur_step.get("executor")
+        if ex:
+            script = ex.get("script", "?") if isinstance(ex, dict) else "?"
+            lines.append("")
+            lines.append(
+                f"▶ This step has a Workflow executor ({script}). Run /wf-run-step to "
+                "execute it and auto-transition on the verdict (or advance manually with "
+                "/wf-step)."
+            )
         guards = cur_step.get("guards", [])
         if guards:
             lines.append("")

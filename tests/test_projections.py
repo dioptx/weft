@@ -49,6 +49,121 @@ class TestContextMd:
         assert "[x] implement" in md
         assert "[x] verify" in md
 
+    def test_renders_current_step_description(self, started_workflow):
+        pdir, state = started_workflow
+        state["steps"][0]["description"] = "Gather all the context you need before acting."
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Gather all the context you need before acting." in md
+
+    def test_only_current_step_description(self, started_workflow):
+        pdir, state = started_workflow
+        state["steps"][0]["description"] = "current step intent"
+        state["steps"][1]["description"] = "later step intent"
+        md = projections.generate_context_md(state, str(pdir))
+        assert "current step intent" in md
+        assert "later step intent" not in md
+
+    def test_next_action_step_complete(self, started_workflow):
+        pdir, state = started_workflow
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action: /wf-step complete" in md
+
+    def test_next_action_run_step_for_executor(self, started_workflow):
+        pdir, state = started_workflow
+        state["steps"][0]["executor"] = {"script": "foo.py"}
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action: /wf-run-step" in md
+
+    def test_next_action_resume_when_waiting(self, started_workflow):
+        pdir, state = started_workflow
+        state["status"] = "waiting"
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action: /wf-resume" in md
+
+    def test_next_action_resume_wins_over_executor_when_waiting(self, started_workflow):
+        """A waiting workflow is parked at a human gate; resume must win even when
+        the current step has an executor (re-running would re-fire what blocked)."""
+        pdir, state = started_workflow
+        state["status"] = "waiting"
+        state["steps"][0]["executor"] = {"script": "foo.py"}
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action: /wf-resume" in md
+        assert "Next action: /wf-run-step" not in md
+
+    def test_no_next_action_when_failed(self, started_workflow):
+        pdir, state = started_workflow
+        state["status"] = "failed"
+        state["steps"][0]["status"] = "failed"
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action:" not in md
+
+    def test_no_next_action_when_aborted(self, started_workflow):
+        pdir, state = started_workflow
+        state["status"] = "aborted"
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action:" not in md
+
+    def test_next_action_without_description(self, started_workflow):
+        """With no description on the current step, Next action still renders and
+        no spurious description block is injected."""
+        pdir, state = started_workflow
+        assert not state["steps"][0].get("description")
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action:" in md
+        # The current-step intent block (description) is absent: the only blank
+        # lines are the structural ones, not a desc paragraph.
+        lines = md.splitlines()
+        na_idx = next(i for i, ln in enumerate(lines) if ln.startswith("Next action:"))
+        # The line immediately before "Next action:" is the structural blank line,
+        # not free-text description content.
+        assert lines[na_idx - 1] == ""
+
+    def test_current_step_insights_render(self, started_workflow):
+        pdir, state = started_workflow
+        state["steps"][0]["insights"] = ["7-day sample is a HARD gate", "positions ~89cr/day"]
+        md = projections.generate_context_md(state, str(pdir))
+        assert "  💡 7-day sample is a HARD gate" in md
+        assert "  💡 positions ~89cr/day" in md
+
+    def test_only_current_step_insights(self, started_workflow):
+        pdir, state = started_workflow
+        state["steps"][0]["insights"] = ["current insight only"]
+        state["steps"][1]["insights"] = ["later insight"]
+        md = projections.generate_context_md(state, str(pdir))
+        assert "current insight only" in md
+        assert "later insight" not in md
+
+    def test_suggest_renders_with_skill_prepended(self, started_workflow):
+        pdir, state = started_workflow
+        state["steps"][0]["skill"] = "/staff-review"
+        state["steps"][0]["suggest"] = ["/wf-status", "/ev-query"]
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Suggested commands: /staff-review (this step), /wf-status, /ev-query" in md
+
+    def test_suggest_without_skill(self, started_workflow):
+        pdir, state = started_workflow
+        assert not state["steps"][0].get("skill")
+        state["steps"][0]["suggest"] = ["/wf-status"]
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Suggested commands: /wf-status" in md
+
+    def test_absent_suggest_and_insights_render_nothing(self, started_workflow):
+        pdir, state = started_workflow
+        assert not state["steps"][0].get("suggest")
+        assert not state["steps"][0].get("insights")
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Suggested commands:" not in md
+        assert "💡" not in md
+
+    def test_no_next_action_when_running_but_all_steps_done(self, started_workflow):
+        """status running with current_step == len(steps) (index past the last
+        step) must emit no Next action and not raise IndexError."""
+        pdir, state = started_workflow
+        state["status"] = "running"
+        state["current_step"] = len(state["steps"])
+        md = projections.generate_context_md(state, str(pdir))
+        assert "Next action:" not in md
+
 
 class TestWriteContextMd:
     def test_writes_file(self, started_workflow):

@@ -8,7 +8,7 @@
       "context": "inline",
       "on_fail": "block",
       "guards": [],
-      "description": "Read Linear ticket + comments + related PRs/tickets. Use Linear MCP tools."
+      "description": "Read the issue + comments + related PRs/tickets. Use your issue-tracker MCP tools."
     },
     {
       "name": "scope-check",
@@ -87,7 +87,7 @@
       "context": "inline",
       "on_fail": "continue",
       "guards": [],
-      "description": "Update PR description, Linear ticket status, ping user."
+      "description": "Update PR description, issue-tracker status, ping user."
     },
     {
       "name": "final-update",

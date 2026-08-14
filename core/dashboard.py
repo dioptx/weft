@@ -3,6 +3,7 @@
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,6 +57,41 @@ def _load_template_detail(name: str) -> dict | None:
     if path.exists():
         return json.loads(path.read_text())
     return None
+
+
+# Path to the shared Command Deck snapshot lib (read by subprocess, not import,
+# to keep weft decoupled from ~/.agents).
+DECK_LIB = os.path.expanduser("~/.agents/scripts/claude/agent_status.py")
+
+
+def _load_deck_status(sections: str) -> dict | None:
+    """Read the Command Deck snapshot via subprocess.
+
+    Returns the parsed JSON dict, or None if the deck lib is absent or the
+    call fails (caller renders a placeholder rather than crashing).
+    """
+    if not os.path.exists(DECK_LIB):
+        return None
+    try:
+        proc = subprocess.run(
+            ["python3", DECK_LIB, "--json", "--section", sections],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return None
+        return json.loads(proc.stdout)
+    except (subprocess.SubprocessError, OSError, ValueError):
+        return None
+
+
+def _deck_missing_panel(title: str, border: str) -> Panel:
+    content = Text()
+    content.append("  deck lib not found\n\n", style="bold yellow")
+    content.append(f"  Expected at:\n  {DECK_LIB}\n\n", style="dim")
+    content.append("  Install ~/.agents to populate this panel.", style="dim")
+    return Panel(content, title=title, border_style=border)
 
 
 # ── Panel builders ─────────────────────────────────────────────────
@@ -282,6 +318,124 @@ def _build_architecture_panel() -> Panel:
     return Panel(lines, title="[bold white] Architecture [/]", border_style="white")
 
 
+def _build_multi_workflow_panel(deck: dict | None) -> Panel:
+    title = "[bold green] All Workflows [/]"
+    if deck is None:
+        return _deck_missing_panel(title, "green")
+
+    wf = deck.get("workflows", {})
+    if not wf.get("available"):
+        content = Text("  No workflow data available.", style="dim")
+        return Panel(content, title=title, border_style="green")
+
+    status_styles = {
+        "running": "bold green",
+        "complete": "blue",
+        "failed": "bold red",
+        "aborted": "yellow",
+        "waiting": "bold yellow",
+    }
+    status_glyph = {
+        "running": "►",
+        "complete": "✓",
+        "failed": "✗",
+        "aborted": "–",
+        "waiting": "⏸",
+    }
+
+    lines = Text()
+    counts = wf.get("status_counts", {})
+    lines.append(f"  {wf.get('count', 0)} workflows", style="bold white")
+    lines.append("   ", style="")
+    summary = []
+    for st in ("running", "complete", "failed", "aborted"):
+        n = counts.get(st, 0)
+        if n:
+            summary.append((st, n))
+    for i, (st, n) in enumerate(summary):
+        lines.append(f"{n} {st}", style=status_styles.get(st, "white"))
+        if i < len(summary) - 1:
+            lines.append("  ", style="dim")
+    lines.append("\n\n", style="")
+
+    # Show running first, then most recently created; cap the list.
+    items = list(wf.get("workflows", []))
+    order = {"running": 0, "failed": 1, "aborted": 2, "complete": 3}
+    items.sort(key=lambda w: (order.get(w.get("status"), 9), -(w.get("age") or {}).get("seconds", 0)))
+
+    for w in items[:14]:
+        st = w.get("status", "?")
+        style = status_styles.get(st, "white")
+        glyph = status_glyph.get(st, "?")
+        lines.append(f"  {glyph} ", style=style)
+        lines.append(f"{w.get('name', '?')}", style=style)
+
+        step_idx = w.get("current_step_index")
+        n_done = w.get("n_complete", 0)
+        n_steps = w.get("step_count", 0)
+        if st == "running" and w.get("current_step_name"):
+            lines.append(f"  {n_done}/{n_steps} ", style="dim")
+            lines.append(f"@ {w['current_step_name']}", style="cyan")
+        else:
+            lines.append(f"  {n_done}/{n_steps}", style="dim")
+
+        age = (w.get("age") or {}).get("human")
+        if age:
+            lines.append(f"  ({age})", style="dim")
+        lines.append("\n")
+
+    return Panel(lines, title=title, border_style="green")
+
+
+def _build_executors_panel(deck: dict | None) -> Panel:
+    title = "[bold magenta] Executors [/]"
+    if deck is None:
+        return _deck_missing_panel(title, "magenta")
+
+    ex = deck.get("executors", {})
+    if not ex.get("available"):
+        content = Text("  No executor data available.", style="dim")
+        return Panel(content, title=title, border_style="magenta")
+
+    task_styles = {
+        "in_progress": "bold cyan",
+        "pending": "yellow",
+        "completed": "green",
+    }
+
+    lines = Text()
+    lines.append(f"  {ex.get('run_count', 0)} runs", style="bold white")
+    lines.append(f"  |  {ex.get('total_agent_count', 0)} agents", style="dim")
+    # session todos = conversation-level todos for the sessions that launched runs
+    # (NOT a run's own task list) — labelled honestly so it isn't misread as run state.
+    lines.append(f"  |  {ex.get('active_task_count', 0)} open session todos", style="dim")
+    lines.append("\n\n", style="dim")
+
+    runs = list(ex.get("runs", []))
+    runs.sort(key=lambda r: r.get("last_activity_iso") or "", reverse=True)
+
+    for r in runs[:10]:
+        rid = r.get("run_id", "?")
+        lines.append(f"  {rid}", style="bold magenta")
+        lines.append(f"  {r.get('agent_count', 0)} agents", style="dim")
+        act = r.get("last_activity_iso") or ""
+        if len(act) >= 19:
+            lines.append(f"  {act[11:19]}", style="dim")
+        lines.append("\n")
+
+        for t in r.get("tasks", [])[:3]:
+            st = t.get("status", "?")
+            tstyle = task_styles.get(st, "white")
+            lines.append(f"      {st:<12}", style=tstyle)
+            subj = t.get("subject", "?")
+            lines.append(f"{subj[:48]}\n", style="")
+        extra = r.get("task_count", 0) - 3
+        if extra > 0:
+            lines.append(f"      [dim]+{extra} more tasks[/]\n", style="")
+
+    return Panel(lines, title=title, border_style="magenta")
+
+
 # ── TUI App ────────────────────────────────────────────────────────
 
 
@@ -289,9 +443,9 @@ class WeftDashboard(App):
     CSS = """
     Screen {
         layout: grid;
-        grid-size: 2 3;
+        grid-size: 2 4;
         grid-columns: 1fr 1fr;
-        grid-rows: auto auto auto;
+        grid-rows: auto auto auto auto;
         grid-gutter: 1;
         padding: 1;
         overflow-y: auto;
@@ -318,6 +472,8 @@ class WeftDashboard(App):
         yield Static(id="right-mid", classes="panel")
         yield Static(id="left-bot", classes="panel")
         yield Static(id="right-bot", classes="panel")
+        yield Static(id="left-deck", classes="panel")
+        yield Static(id="right-deck", classes="panel")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -333,6 +489,7 @@ class WeftDashboard(App):
         skills = _load_skills()
         tmpls = templates.list_templates(pdir)
         hooks_json = _load_hooks_json()
+        deck = _load_deck_status("workflows,executors")
 
         self.query_one("#left-top", Static).update(_build_workflow_panel(state))
         self.query_one("#right-top", Static).update(_build_skills_panel(skills))
@@ -340,6 +497,8 @@ class WeftDashboard(App):
         self.query_one("#right-mid", Static).update(_build_hooks_panel(hooks_json))
         self.query_one("#left-bot", Static).update(_build_events_panel(pdir))
         self.query_one("#right-bot", Static).update(_build_architecture_panel())
+        self.query_one("#left-deck", Static).update(_build_multi_workflow_panel(deck))
+        self.query_one("#right-deck", Static).update(_build_executors_panel(deck))
 
 
 def main():

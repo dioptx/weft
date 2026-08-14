@@ -50,7 +50,7 @@ The plugin auto-registers four hooks (`SessionStart`, `PreToolUse`, `PreCompact`
 /wf-start generic        # plan → implement → verify
 /wf-status               # show current state
 /wf-step complete        # advance to the next step
-/wf-dashboard            # open the live TUI
+/wf-analyze              # per-template timing + recurring friction across runs
 ```
 
 Run `/wf-start` with no args for the guided template picker.
@@ -118,12 +118,12 @@ JSON
 
 - **Event-sourced state machine** — append-only JSON log; rebuild state with `/wf-rebuild`
 - **Template system** — `generic` (3 steps) and `feature-workflow` (11 steps) bundled; add your own under `templates/` (project), `~/.weft/templates/` (user-global), or `WEFT_USER_TEMPLATES_DIR`
-- **Smart skills** — 11 slash commands (`wf-start`, `wf-step`, `wf-status`, `wf-abort`, `wf-preview`, `wf-rebuild`, `wf-dashboard`, `wf-new-template`, `wf-edit-template`, `wf-compose`, `ev-query`)
+- **Smart skills** — 12 slash commands (`wf-start`, `wf-step`, `wf-status`, `wf-resume`, `wf-run-step`, `wf-abort`, `wf-preview`, `wf-rebuild`, `wf-analyze`, `wf-template`, `wf-compose`, `ev-query`)
 - **Guard engine** — per-step `allowed-tools` and `blocked-commands` enforced via `PreToolUse` hook
 - **Stop gate** — refuses session exit while steps are incomplete (configurable via `on_fail: block|retry|skip`)
 - **Compaction-safe** — `PreCompact` hook writes a `context.md` projection so the next session resumes mid-workflow
 - **Live dashboard** — auto-refreshing TUI for monitoring active workflows
-- **Template management** — `/wf-new-template` and `/wf-edit-template` for creating and editing templates in-session
+- **Template management** — `/wf-template` for creating and editing templates in-session
 
 ## Auditable by design
 
@@ -140,6 +140,29 @@ weft rebuild                     # reconstruct from events alone
 
 Use `weft query --type wf.step_changed`, `--last 50`, or `--workflow <id>` to filter.
 
+## Interactive TUI
+
+For watching multiple workflows at once, `scripts/wf.py` is a curses-based TUI over the same state. Three views: list (every running workflow + PR/CI status), detail (per-workflow step + recent events), templates (discovery).
+
+```bash
+python3 $WEFT_ROOT/scripts/wf.py                 # interactive TUI
+python3 $WEFT_ROOT/scripts/wf.py --list          # plain-text table (auto when not TTY)
+python3 $WEFT_ROOT/scripts/wf.py --json | jq     # machine-readable
+python3 $WEFT_ROOT/scripts/wf.py --templates     # template catalog
+```
+
+Keys in the list view: `j`/`k` navigate, `enter` open detail, `t` templates, `r` refresh, `q` quit. Detail view: `esc`/`h` back, `r` refresh, `q` quit. Read-only — never mutates weft state.
+
+The TUI scans the current directory by default; pass a path to scan elsewhere. It picks up both legacy single-workflow layouts (`<project>/.claude/weft/`) and per-ticket layouts (`<project>/.claude/weft/workflows/<id>/.claude/weft/`).
+
+For scripting without curses, `scripts/wf-monitor.py` produces the same aligned-table output and supports `--json`, `--templates`, and an explicit project path argument.
+
+Suggested shell alias:
+
+```bash
+alias wf='python3 ~/.claude/plugins/cache/local/weft/0.3.0/scripts/wf.py'
+```
+
 ## Repository Layout
 
 ```
@@ -147,6 +170,7 @@ Use `weft query --type wf.step_changed`, `--last 50`, or `--workflow <id>` to fi
 core/             Python event store, state machine, projections, CLI, dashboard
 hooks/            SessionStart / PreToolUse / PreCompact / Stop bash hooks + hooks.json
 skills/           11 SKILL.md files for the /wf-* and /ev-* slash commands
+scripts/          wf.py (curses TUI) + wf-monitor.py (plain-text + JSON viewer)
 templates/        generic.json, feature-workflow.json (workflow definitions)
 tests/            pytest suite covering event store, state machine, hooks, CLI, behaviors
 ```

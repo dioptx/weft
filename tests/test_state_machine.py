@@ -31,9 +31,11 @@ class TestStartWorkflow:
         assert events[0]["event_type"] == "wf.started"
 
     def test_workflow_id_includes_date(self, project_dir, generic_template):
+        import re
         state = state_machine.start_workflow(generic_template, "s1", str(project_dir))
-        assert state["workflow_id"].startswith("generic-")
-        assert len(state["workflow_id"]) == len("generic-20260406")
+        # name-YYYYMMDD-HHMMSS: second resolution so same-day runs don't collide.
+        assert re.fullmatch(r"generic-\d{8}-\d{6}", state["workflow_id"]), \
+            state["workflow_id"]
 
     def test_rejects_missing_name(self, project_dir):
         with pytest.raises(ValueError, match="name"):
