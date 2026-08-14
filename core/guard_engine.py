@@ -1,10 +1,25 @@
 """Guard engine — evaluate whether a tool call is allowed in the current step."""
 
 import json
+import os
 import re
 import sys
+from pathlib import Path
 
 from . import state_machine
+
+
+def _approved_commands(project_dir: str | None) -> set[str]:
+    """Per-run pre-accept allowlist: exact commands an operator vetted for THIS run.
+    Written to <project>/.claude/weft/approved.json (a JSON list of strings) by the
+    dashboard when a human approves a handed_back finding's command. Empty/absent =
+    nothing pre-approved (default-deny stays fully in force)."""
+    base = project_dir or os.environ.get("CLAUDE_PROJECT_DIR", ".")
+    try:
+        data = json.loads((Path(base) / ".claude" / "weft" / "approved.json").read_text())
+        return {str(c).strip() for c in data if str(c).strip()}
+    except (OSError, json.JSONDecodeError, TypeError):
+        return set()
 
 
 def evaluate(hook_input: dict, project_dir: str | None = None) -> dict | None:
@@ -24,6 +39,13 @@ def evaluate(hook_input: dict, project_dir: str | None = None) -> dict | None:
         command = hook_input.get("tool_input", {}).get("file_path", "")
 
     if not command:
+        return None
+
+    # Pre-accept escape hatch: an operator-vetted exact command bypasses every guard
+    # for this one run. Exact-match only — if the agent deviates from the approved
+    # string at all, it stays blocked. This is the sole path a destructive/publish
+    # command reaches the system, and it requires a human's explicit approval.
+    if tool_name == "Bash" and command.strip() in _approved_commands(project_dir):
         return None
 
     current_id = state["current_step"]
