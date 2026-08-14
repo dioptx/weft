@@ -715,12 +715,41 @@ def cmd_dashboard(_args: list[str]) -> None:
     app.run()
 
 
+USAGE = """\
+Usage: cli.py <command> [args...]
+
+Commands:
+  start [<template>|step1,step2,...]   Start a workflow (no args lists templates)
+  preview <template>                   Show a template's steps and guards
+  status [--json]                      Show current workflow state
+  step <complete|fail|skip|retry|loop-continue|loop-done> [reason]
+                                       Transition the current step
+  run-result                           Record a run result (reads hook JSON on stdin)
+  resume                               Resume an interrupted workflow
+  abort [reason]                       Abort the active workflow
+  rebuild [workflow_id]                Rebuild state.json from the event log
+  query [--type T] [--tool T] [--last N] [--workflow ID]
+                                       Query the event log
+  analyze                              Summarize event-log friction across runs
+  doctor                               Diagnose workflow/state health
+  save-template                        Save a JSON template from stdin
+  dashboard                            Launch the interactive TUI
+  context                              Print context.md to stdout
+  guard                                PreToolUse guard (reads hook JSON on stdin)
+  gate                                 Stop completion gate (reads hook JSON on stdin)
+
+Environment:
+  CLAUDE_PROJECT_DIR  project root (defaults to '.')
+  CLAUDE_PLUGIN_ROOT  plugin install root (used by hooks)
+  WEFT_TERMINAL       force terminal-style output (1) or Claude Code style (0)
+"""
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: cli.py <command> [args...]", file=sys.stderr)
-        print("Commands: start, step, status, abort, rebuild, query, analyze, preview, doctor, save-template, dashboard, guard, gate, context",
-              file=sys.stderr)
-        sys.exit(1)
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        # Help / no-args: print usage to stdout, exit 0.
+        print(USAGE)
+        return
 
     commands = {
         "start": cmd_start,
@@ -745,6 +774,7 @@ def main():
     fn = commands.get(cmd)
     if not fn:
         print(f"Unknown command: {cmd}", file=sys.stderr)
+        print("Run 'cli.py --help' for usage.", file=sys.stderr)
         sys.exit(1)
 
     fn(sys.argv[2:])

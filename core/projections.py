@@ -1,6 +1,22 @@
 """Projections — derived views from state and events."""
 
+import os
+
 from . import weft_dir, event_store
+
+
+def _terminal_mode() -> bool:
+    """True when output is consumed by a human at a shell, not by Claude Code.
+
+    Claude Code sets CLAUDECODE=1 when running. WEFT_TERMINAL=1 forces
+    terminal mode for tests/CI; WEFT_TERMINAL=0 forces Claude-Code mode.
+    """
+    forced = os.environ.get("WEFT_TERMINAL")
+    if forced in ("1", "true", "yes"):
+        return True
+    if forced in ("0", "false", "no"):
+        return False
+    return os.environ.get("CLAUDECODE") != "1"
 
 
 def generate_context_md(state: dict, project_dir: str | None = None) -> str:
@@ -52,6 +68,15 @@ def generate_context_md(state: dict, project_dir: str | None = None) -> str:
             next_action = "/wf-run-step"
         else:
             next_action = "/wf-step complete"
+        # In a plain terminal the /wf-* slash commands don't exist — point at the
+        # equivalent cli.py invocation instead. (/wf-run-step has no direct CLI
+        # equivalent; it stays as guidance to run the executor.)
+        if _terminal_mode():
+            next_action = {
+                "/wf-resume": "cli.py resume",
+                "/wf-run-step": "cli.py run-result  (run the step executor)",
+                "/wf-step complete": "cli.py step complete",
+            }[next_action]
         lines.append("")
         lines.append(f"Next action: {next_action}")
 
@@ -87,10 +112,20 @@ def generate_context_md(state: dict, project_dir: str | None = None) -> str:
             lines.append("")
             lines.append(f"Loop exit condition: {cur_step['exit_condition']}")
 
-    lines += [
-        "",
-        "Use /weft:wf-step to advance. /weft:wf-status for details. /weft:ev-query for events.",
-    ]
+    # General command reference footer — only while running (a completed/aborted
+    # workflow can't be advanced, so a stale "advance" hint is noise) and
+    # terminal-aware (the /weft:* slash commands don't exist in a plain shell).
+    if status == "running":
+        if _terminal_mode():
+            lines += [
+                "",
+                "Commands: cli.py step <complete|fail|skip>  |  cli.py status  |  cli.py query",
+            ]
+        else:
+            lines += [
+                "",
+                "Use /weft:wf-step to advance. /weft:wf-status for details. /weft:ev-query for events.",
+            ]
 
     return "\n".join(lines)
 

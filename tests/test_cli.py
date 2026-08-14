@@ -195,9 +195,10 @@ class TestCmdContext:
 
 class TestMainRouting:
     def test_no_args(self, project_dir):
+        # No args now prints full usage to stdout and exits 0 (was: exit 1).
         r = run_cli([], str(project_dir))
-        assert r.returncode == 1
-        assert "usage" in r.stderr.lower()
+        assert r.returncode == 0
+        assert "usage" in r.stdout.lower()
 
     def test_unknown_command(self, project_dir):
         r = run_cli(["unknown"], str(project_dir))
@@ -732,3 +733,26 @@ class TestCmdQueryNoToolFilter:
         assert r.returncode == 0
         # summary fallback prints total events, never a tool= line
         assert "tool=" not in r.stdout
+
+
+class TestHelp:
+    def test_help_flag_exits_zero(self, project_dir):
+        r = run_cli(["--help"], str(project_dir))
+        assert r.returncode == 0
+        assert "Usage: cli.py" in r.stdout
+
+    def test_h_flag_and_help_word(self, project_dir):
+        for arg in ("-h", "help"):
+            r = run_cli([arg], str(project_dir))
+            assert r.returncode == 0, arg
+            assert "Usage: cli.py" in r.stdout, arg
+
+    def test_no_args_prints_usage(self, project_dir):
+        r = run_cli([], str(project_dir))
+        assert r.returncode == 0
+        assert "Usage: cli.py" in r.stdout
+
+    def test_unknown_command_points_at_help(self, project_dir):
+        r = run_cli(["bogus"], str(project_dir))
+        assert r.returncode == 1
+        assert "--help" in r.stderr

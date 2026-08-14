@@ -33,7 +33,10 @@ class TestContextMd:
         # Step 0 (gather) has no guards, so no "Active guards" section
         assert "Active guards" not in md
 
-    def test_includes_skill_hints(self, started_workflow):
+    def test_includes_skill_hints(self, started_workflow, monkeypatch):
+        # Slash-command hints only render in Claude-Code mode; pin it so this
+        # is deterministic regardless of whether CI sets CLAUDECODE.
+        monkeypatch.setenv("WEFT_TERMINAL", "0")
         pdir, state = started_workflow
         md = projections.generate_context_md(state, str(pdir))
         assert "/weft:wf-step" in md
@@ -187,3 +190,31 @@ class TestFormatStatus:
         state = state_machine.step_complete(state, "done", "s1", str(pdir))
         output = projections.format_status(state, str(pdir))
         assert "wf.step_changed" in output
+
+
+class TestTerminalMode:
+    def test_terminal_footer_when_not_in_claude_code(self, started_workflow, monkeypatch):
+        monkeypatch.setenv("WEFT_TERMINAL", "1")
+        pdir, state = started_workflow
+        md = projections.generate_context_md(state, str(pdir))
+        assert "cli.py step" in md
+        assert "/weft:wf-step" not in md
+
+    def test_claude_code_footer_when_forced(self, started_workflow, monkeypatch):
+        monkeypatch.setenv("WEFT_TERMINAL", "0")
+        pdir, state = started_workflow
+        md = projections.generate_context_md(state, str(pdir))
+        assert "/weft:wf-step" in md
+
+    def test_complete_has_no_advance_footer(self, started_workflow, monkeypatch):
+        # A completed workflow can't be advanced, so neither the terminal nor the
+        # Claude-Code command footer should appear (origin's old bug showed one).
+        monkeypatch.setenv("WEFT_TERMINAL", "1")
+        pdir, state = started_workflow
+        pdir_str = str(pdir)
+        for _ in range(3):
+            state = state_machine.step_complete(state, "", "s1", pdir_str)
+        md = projections.generate_context_md(state, pdir_str)
+        assert "[complete]" in md
+        assert "cli.py step" not in md
+        assert "/weft:wf-step" not in md
