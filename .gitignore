@@ -7,3 +7,5 @@ dist/
 build/
 *.tmp
 .claude/weft/
+templates/resolve-finding.json
+templates/publish-repo.json
