@@ -756,3 +756,20 @@ class TestHelp:
         r = run_cli(["bogus"], str(project_dir))
         assert r.returncode == 1
         assert "--help" in r.stderr
+
+
+class TestTemplateNameTraversalCLI:
+    """integration: a traversal template name is rejected cleanly end-to-end
+    (clean exit + message, not an unhandled traceback)."""
+
+    def test_start_rejects_traversal(self, project_dir):
+        r = run_cli(["start", "../../evil"], str(project_dir))
+        assert r.returncode == 1
+        assert "Invalid template name" in r.stderr
+        assert "Traceback" not in r.stderr
+
+    def test_preview_rejects_traversal(self, project_dir):
+        r = run_cli(["preview", "../../evil"], str(project_dir))
+        assert r.returncode == 1
+        assert "Invalid template name" in r.stderr
+        assert "Traceback" not in r.stderr

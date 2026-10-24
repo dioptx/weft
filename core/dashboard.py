@@ -7,13 +7,59 @@ import subprocess
 import sys
 from pathlib import Path
 
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Footer, Header, Static
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
+from typing import TYPE_CHECKING
+
+# textual + rich are optional — they ship only with the `dashboard` extra
+# (`pip install weft[dashboard]`), keeping the core engine stdlib-only. Guard the
+# import so this module still loads on a clean install; `_require_deps` surfaces a
+# helpful message if someone actually launches the dashboard without them.
+if TYPE_CHECKING:
+    # Type checkers always see the real symbols (deps present in a lint env).
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Horizontal, Vertical, VerticalScroll
+    from textual.widgets import Footer, Header, Static
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+
+    _MISSING_DEP: str | None = None
+else:
+    try:
+        from textual.app import App, ComposeResult
+        from textual.binding import Binding
+        from textual.containers import Horizontal, Vertical, VerticalScroll
+        from textual.widgets import Footer, Header, Static
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+
+        _MISSING_DEP = None
+    except ModuleNotFoundError as exc:
+        _MISSING_DEP = exc.name
+
+        # Minimal runtime fallbacks so the module imports and class/function
+        # definitions evaluate. None of these are used unless the dashboard is
+        # actually run, which `_require_deps` blocks first.
+        App = object
+        ComposeResult = object
+
+        def Binding(*_args, **_kwargs):
+            return None
+
+        Horizontal = Vertical = VerticalScroll = None
+        Footer = Header = Static = None
+        Panel = Table = Text = None
+
+
+def _require_deps() -> None:
+    """Fail with an actionable message if the dashboard extra isn't installed."""
+    if _MISSING_DEP is not None:
+        raise SystemExit(
+            f"weft dashboard requires the '{_MISSING_DEP}' package, which is not "
+            "installed.\nInstall the dashboard extra:  pip install weft[dashboard]"
+        )
+
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -461,6 +507,7 @@ class WeftDashboard(App):
     ]
 
     def __init__(self, project_dir: str | None = None):
+        _require_deps()
         super().__init__()
         self.project_dir = project_dir
 

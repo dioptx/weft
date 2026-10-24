@@ -26,6 +26,19 @@ def _user_templates_dir() -> Path:
     return Path.home() / ".weft" / "templates"
 
 
+def _safe_name(name: str) -> str:
+    """Validate a template name used to build a `<dir>/<name>.json` path.
+
+    A name must be a single safe path stem: no directory separators, no `..`,
+    and no leading dot. This blocks traversal like `../../evil` escaping the
+    templates directory. Legitimate names (e.g. `generic`, `feature-workflow`)
+    are returned unchanged.
+    """
+    if not name or Path(name).name != name or name.startswith("."):
+        raise ValueError(f"Invalid template name: {name!r}")
+    return name
+
+
 def list_templates(project_dir: str | None = None) -> list[dict]:
     """List all available templates (plugin + user-global + project-local)."""
     templates = []
@@ -48,6 +61,7 @@ def list_templates(project_dir: str | None = None) -> list[dict]:
 
 def load_template(name: str, project_dir: str | None = None) -> dict | None:
     """Load a template by name. Project-local > user-global > plugin."""
+    name = _safe_name(name)
     for d in [_project_templates_dir(project_dir), _user_templates_dir(), _plugin_templates_dir()]:
         path = d / f"{name}.json"
         if path.exists():
@@ -72,7 +86,7 @@ def template_from_steps(step_names: list[str], name: str = "adhoc") -> dict:
 
 def save_template(template: dict, project_dir: str | None = None) -> Path:
     """Save a template to the project-local templates directory. Returns the path."""
-    name = template.get("name", "unnamed")
+    name = _safe_name(template.get("name", "unnamed"))
     d = _project_templates_dir(project_dir)
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"{name}.json"

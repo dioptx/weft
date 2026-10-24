@@ -26,6 +26,8 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 - `Makefile` with `install`, `test`, `lint`, `clean` targets for one-command contributor onboarding.
 
 ### Fixed
+- **Template name path traversal.** `templates.load_template`/`save_template` interpolated the caller-supplied `name` straight into `<dir>/<name>.json`, so a name like `../../evil` escaped the templates directory (read or write). Names are now validated to a single safe stem (no separators, no `..`, no leading dot); legitimate names are unchanged, and the `weft start`/`preview` CLI paths reject a bad name cleanly.
+- **Dashboard dependencies declared as the `dashboard` extra.** `core/dashboard.py` imports `textual` and `rich`, but `pyproject.toml` declared no runtime deps, so `weft dashboard` (and `import core.dashboard`) hard-failed with `ModuleNotFoundError` on a clean install. The two libraries now ship as `pip install weft[dashboard]` (keeping the core engine stdlib-only); the module imports regardless, and launching the dashboard without the extra now exits with an actionable `pip install weft[dashboard]` message instead of a traceback.
 - **`insights` step field is now actually populated.** `generate_context_md` rendered per-step `insights` (💡 lines) and the field was documented, but `start_workflow`/`rebuild_from_events` never copied it from the template into step state — so it silently rendered nothing. Both build sites now carry `insights`, matching the existing `suggest`-style optional fields. (`suggest` has the same latent gap; wire it the same way if a template ever uses it.)
 
 ### Changed

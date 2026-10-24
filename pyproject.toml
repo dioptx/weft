@@ -29,6 +29,10 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+# The TUI dashboard (`weft dashboard`) is the one feature that needs third-party
+# libraries. Kept out of the core install so the engine stays stdlib-only;
+# install with `pip install weft[dashboard]`.
+dashboard = ["textual>=0.40", "rich>=13.0"]
 
 [project.urls]
 Homepage = "https://github.com/dioptx/weft"

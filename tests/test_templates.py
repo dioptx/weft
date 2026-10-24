@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from core import templates
 
 
@@ -178,3 +180,55 @@ class TestFeatureWorkflowTemplate:
         plan = next(s for s in tmpl["steps"] if s["name"] == "plan-and-worktree")
         guards = plan.get("guards", [])
         assert len(guards) > 0
+
+
+class TestTemplateNameSafety:
+    """Template names are interpolated into `<dir>/<name>.json`. A name must be a
+    single safe stem so it cannot escape the templates directory (path traversal).
+    """
+
+    # --- unit: the validator itself ---
+    def test_safe_name_passes_legitimate_stems(self):
+        for name in ["generic", "feature-workflow", "my_custom", "codex-review"]:
+            assert templates._safe_name(name) == name
+
+    @pytest.mark.parametrize(
+        "name",
+        ["../../evil", "..", "a/b", "/etc/passwd", "sub/dir/x", ".hidden", "", "."],
+    )
+    def test_safe_name_rejects_unsafe(self, name):
+        with pytest.raises(ValueError):
+            templates._safe_name(name)
+
+    # --- security: load_template must not read outside the templates dirs ---
+    def test_load_template_rejects_traversal(self, project_dir, tmp_path):
+        # Plant a file one level above where a project-local "evil" template could
+        # land, then try to reach it via traversal.
+        secret = tmp_path / ".claude" / "weft" / "secret.json"
+        secret.write_text(json.dumps({"name": "secret", "steps": []}))
+        with pytest.raises(ValueError):
+            templates.load_template("../secret", str(project_dir))
+
+    def test_load_template_rejects_absolute(self, project_dir):
+        with pytest.raises(ValueError):
+            templates.load_template("/etc/passwd", str(project_dir))
+
+    # --- security: save_template must not write outside the project templates dir ---
+    def test_save_template_rejects_traversal(self, project_dir):
+        evil = {"name": "../../evil", "description": "x", "steps": [{"name": "s"}]}
+        with pytest.raises(ValueError):
+            templates.save_template(evil, str(project_dir))
+        # Nothing escaped the sandbox.
+        assert not (project_dir.parent.parent / "evil.json").exists()
+
+    # --- functional: legitimate names behave exactly as before (regression) ---
+    def test_legitimate_names_unaffected(self, project_dir):
+        assert templates.load_template("generic", str(project_dir)) is not None
+        assert templates.load_template("nonexistent", str(project_dir)) is None
+
+    def test_save_then_load_roundtrip(self, project_dir):
+        tmpl = {"name": "my-flow", "description": "d", "steps": [{"name": "s"}]}
+        path = templates.save_template(tmpl, str(project_dir))
+        assert path.name == "my-flow.json"
+        assert path.parent == project_dir / ".claude" / "weft" / "templates"
+        assert templates.load_template("my-flow", str(project_dir))["name"] == "my-flow"

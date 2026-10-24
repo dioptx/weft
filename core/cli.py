@@ -113,7 +113,11 @@ def cmd_start(args: list[str]) -> None:
         step_names = [s.strip() for s in name.split(",")]
         tmpl = templates.template_from_steps(step_names)
     else:
-        tmpl = templates.load_template(name, _project_dir())
+        try:
+            tmpl = templates.load_template(name, _project_dir())
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(1)
         if not tmpl:
             print(f"Template not found: {name}", file=sys.stderr)
             print("Available:", file=sys.stderr)
@@ -358,7 +362,11 @@ def cmd_preview(args: list[str]) -> None:
         print("Use 'start' with no args to list templates.", file=sys.stderr)
         sys.exit(1)
 
-    detail = templates.template_detail(args[0], _project_dir())
+    try:
+        detail = templates.template_detail(args[0], _project_dir())
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
     if not detail:
         print(f"Template not found: {args[0]}", file=sys.stderr)
         sys.exit(1)
