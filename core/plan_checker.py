@@ -1,13 +1,45 @@
 """Tracker-independent validation of claims, milestones and tickets."""
 
 from graphlib import CycleError, TopologicalSorter
+import re
+import string
+import unicodedata
 
 
-def check_plan(plan: object) -> list[str]:
-    """Return one diagnostic per error; optional provenance fields are ignored.
+_PLACEHOLDERS = {"", "tbd", "todo", "to be defined", "to be confirmed", "placeholder", "n/a", "?"}
+_ISSUE_REFERENCE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*")
+
+
+def _normalized_text(text: str) -> str:
+    """Compare whole text without case, extra whitespace or trailing punctuation."""
+    text = " ".join(text.split()).casefold()
+    while text and (text[-1].isspace() or text[-1] in string.punctuation
+                    or unicodedata.category(text[-1]).startswith("P")):
+        text = text[:-1]
+    return text
+
+
+def _has_content(value: object) -> bool:
+    texts = [value] if isinstance(value, str) else value
+    return (isinstance(texts, list) and bool(texts)
+            and all(isinstance(text, str) and _normalized_text(text) not in _PLACEHOLDERS
+                    for text in texts))
+
+
+def open_claim_count(plan: object) -> int:
+    """Count all open claim entries, including dropped ones, in readable input."""
+    claims = plan.get("claims", []) if isinstance(plan, dict) else []
+    if not isinstance(claims, list):
+        return 0
+    return sum(isinstance(claim, dict) and claim.get("status") == "open" for claim in claims)
+
+
+def check_plan(plan: object, *, allow_open: bool = False) -> list[str]:
+    """Return one diagnostic per error in a plan intended for human review.
 
     This checks the plan's relationships, not whether its source material is true
-    or whether a person approved it. See docs/planning.md for the JSON contract.
+    or whether a person approved it. allow_open permits unresolved open claims
+    only; citing an open claim still fails. See docs/planning.md for the contract.
     """
     if not isinstance(plan, dict):
         return ["plan: expected an object"]
@@ -29,6 +61,12 @@ def check_plan(plan: object) -> list[str]:
 
     def has_text(value):
         return isinstance(value, str) and bool(value.strip())
+
+    def check_existing_issue(item, label):
+        if "existing_issue" in item:
+            issue = item["existing_issue"]
+            if not isinstance(issue, str) or not _ISSUE_REFERENCE.fullmatch(issue):
+                errors.append(f"{label}.existing_issue: expected owner/repo#N with a positive issue number")
 
     def refs(item, key, label):
         value = item.get(key, [])
@@ -62,6 +100,7 @@ def check_plan(plan: object) -> list[str]:
                 errors.append(f"claim {ident!r}.{key}: expected a non-empty string")
         if claim.get("status") not in ("confirmed", "inferred", "open"):
             errors.append(f"claim {ident!r}.status: expected confirmed, inferred or open")
+        check_existing_issue(claim, f"claim {ident!r}")
 
     cited = set()
 
@@ -76,13 +115,17 @@ def check_plan(plan: object) -> list[str]:
 
     assigned = set()
     graph = {}
+    claim_tickets = {}
     nodes = milestones.keys() | tickets.keys()
     for kind, items in (("milestone", milestones), ("ticket", tickets)):
         for ident, item in items.items():
             label = f"{kind} {ident!r}"
+            check_existing_issue(item, label)
             claim_ids = refs(item, "claim_ids", label)
             cite(claim_ids, label)
             if kind == "ticket":
+                for claim_id in claim_ids:
+                    claim_tickets.setdefault(claim_id, set()).add(ident)
                 if not claim_ids:
                     errors.append(f"{label}: must cite at least one known claim")
                 milestone = item.get("milestone")
@@ -90,11 +133,15 @@ def check_plan(plan: object) -> list[str]:
                     errors.append(f"{label}: unknown milestone {milestone!r}")
                 else:
                     assigned.add(milestone)
+                for key in ("why", "in_spec", "out_of_spec", "done_when"):
+                    if not _has_content(item.get(key)):
+                        errors.append(f"{label}.{key}: must contain non-placeholder text")
                 done = item.get("done_when")
-                if not (has_text(done) or (
-                    isinstance(done, list) and done and all(has_text(v) for v in done)
-                )):
-                    errors.append(f"{label}.done_when: must contain non-empty text")
+                title = item.get("title")
+                if _has_content(done) and has_text(title):
+                    criteria = [done] if isinstance(done, str) else done
+                    if any(_normalized_text(text) == _normalized_text(title) for text in criteria):
+                        errors.append(f"{label}.done_when: must not repeat the ticket title")
             else:
                 date_claims = refs(item, "date_claim_ids", label)
                 cite(date_claims, f"{label}.date")
@@ -132,7 +179,33 @@ def check_plan(plan: object) -> list[str]:
             dropped_ids.add(claim_id)
 
     for ident, claim in claims.items():
+        if claim.get("status") == "open" and ident not in dropped_ids and not allow_open:
+            errors.append(f"claim {ident!r}: open but not resolved or dropped with a reason")
         if claim.get("status") == "confirmed" and ident not in cited | dropped_ids:
             errors.append(f"claim {ident!r}: confirmed but neither cited nor dropped with a reason")
+        if (claim.get("kind") == "relationship" and claim.get("status") == "confirmed"
+                and ident not in dropped_ids):
+            endpoints = {}
+            for key in ("from", "to"):
+                endpoint = claim.get(key)
+                label = f"claim {ident!r}.{key}"
+                if not has_text(endpoint):
+                    errors.append(f"{label}: expected a ticket or claim id")
+                elif endpoint in tickets:
+                    endpoints[key] = {endpoint}
+                elif endpoint in claims:
+                    matches = claim_tickets.get(endpoint, set())
+                    if matches:
+                        endpoints[key] = matches
+                    else:
+                        errors.append(f"{label}: claim {endpoint!r} has no matching ticket")
+                else:
+                    errors.append(f"{label}: unknown ticket or claim {endpoint!r}")
+            if len(endpoints) == 2 and not any(
+                prerequisite != dependent and prerequisite in graph[dependent]
+                for prerequisite in endpoints["from"] for dependent in endpoints["to"]
+            ):
+                errors.append(f"claim {ident!r}: relationship requires a dependency from "
+                              f"{claim['from']!r} to {claim['to']!r} (to must depend on from)")
 
     return errors

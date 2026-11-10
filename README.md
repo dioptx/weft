@@ -196,7 +196,7 @@ For scripting without curses, `scripts/wf-monitor.py` produces the same aligned-
 Suggested shell alias:
 
 ```bash
-alias wf='python3 ~/.claude/plugins/cache/local/weft/0.4.0/scripts/wf.py'
+alias wf='python3 ~/.claude/plugins/cache/local/weft/0.4.1/scripts/wf.py'
 ```
 
 ## Repository Layout
@@ -227,7 +227,7 @@ Same-named template higher in the table overrides lower tiers, so you can shadow
 
 ## Version
 
-**v0.4.0** — current. See [CHANGELOG.md](CHANGELOG.md) for release history.
+**v0.4.1** — current. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Contributing
 
