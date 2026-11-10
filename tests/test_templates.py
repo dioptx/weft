@@ -165,16 +165,33 @@ class TestFeatureWorkflowTemplate:
                     except re.error as e:
                         pytest.fail(f"Invalid regex in step '{step['name']}': {pattern} — {e}")
 
-    def test_scope_check_has_git_guard(self, project_dir):
+    def test_sanitize_push_owns_git_commit_guard(self, project_dir):
+        import re
         tmpl = templates.load_template("feature-workflow", str(project_dir))
-        scope = next(s for s in tmpl["steps"] if s["name"] == "scope-check")
-        guards = scope.get("guards", [])
+        sanitize = next(s for s in tmpl["steps"] if s["name"] == "sanitize-push")
+        guards = sanitize.get("guards", [])
         assert len(guards) > 0
         patterns = [g.get("command_pattern", g) if isinstance(g, dict) else g for g in guards]
         assert any("git" in p for p in patterns)
+        for command in ("git commit -m change", "git -C work commit -m change"):
+            assert any(re.search(p, command) for p in patterns)
+            for name in ("scope-check", "plan-and-worktree"):
+                step = next(s for s in tmpl["steps"] if s["name"] == name)
+                old_patterns = [g.get("command_pattern", g) if isinstance(g, dict) else g
+                                for g in step.get("guards", [])]
+                assert not any(re.search(p, command) for p in old_patterns)
 
-    def test_plan_has_push_guard(self, project_dir):
+    def test_sanitize_push_owns_git_push_guard(self, project_dir):
+        import re
         tmpl = templates.load_template("feature-workflow", str(project_dir))
-        plan = next(s for s in tmpl["steps"] if s["name"] == "plan-and-worktree")
-        guards = plan.get("guards", [])
+        sanitize = next(s for s in tmpl["steps"] if s["name"] == "sanitize-push")
+        guards = sanitize.get("guards", [])
         assert len(guards) > 0
+        patterns = [g.get("command_pattern", g) if isinstance(g, dict) else g for g in guards]
+        for command in ("git push origin main", "git -C work push origin main"):
+            assert any(re.search(p, command) for p in patterns)
+            for name in ("scope-check", "plan-and-worktree"):
+                step = next(s for s in tmpl["steps"] if s["name"] == name)
+                old_patterns = [g.get("command_pattern", g) if isinstance(g, dict) else g
+                                for g in step.get("guards", [])]
+                assert not any(re.search(p, command) for p in old_patterns)
