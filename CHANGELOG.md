@@ -4,7 +4,13 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-10
+
 ### Added
+- `land-pr` workflow: prepare and push, post review and preview evidence on the PR, then merge.
+- `plan-from-interview` workflow: source-backed claims, reconciliation, checked drafts, human approval, retry-safe tracker publication and bounded readback repair. Preserves optional whiteboard annotations, capacity tables, multilingual text and existing issue links. Ends at tickets.
+- `weft check-plan <plan.json>`: standard-library validation of claim citations and coverage, milestone membership and date evidence, dependency existence and cycles, and non-empty completion criteria. See `docs/planning.md` for the generic contract.
+- Guard matching against tool names for tools other than Bash, Edit and Write, including MCP tools registered through `mcp__.*` in the hook matcher.
 - **`weft doctor` (`/wf-doctor`) — template currency.** Reports whether a working copy (project-local or user-global) has drifted from the plugin-bundled canonical it was derived from — the one staleness git can't see, since the copies live in different trees. Compares by content hash (key-order/whitespace independent), so only real semantic drift is flagged. Also reports whether the plugin's own git clone is behind upstream (no network; HEAD vs the already-fetched `@{u}`). Read-only, no persisted state. `--json` for machine output.
 - **`weft analyze` (`/wf-analyze`) — per-template run insight.** Reads the event log into a per-template rollup: step durations (median/p90 from paired `wf.step_changed` deltas), loop counts, guard-block counts, abandonment + stall counts, slowest step, plus a recurring-friction section joined from `workflow-qa.jsonl` (by `workflow_id`). Turns the event log from a record into a feedback loop.
 - **`wf.guard_blocked` events.** The guard engine appends a `wf.guard_blocked` event (`workflow_id`, `step_id`, `step_name`, `pattern`, `command`, `tool`) when it blocks a tool call — previously blocks were silent, so "does this guard ever fire?" was unanswerable from the log. Matching logic unchanged.
@@ -26,6 +32,7 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 - `Makefile` with `install`, `test`, `lint`, `clean` targets for one-command contributor onboarding.
 
 ### Fixed
+- Documented guard ownership correctly: a guarded command may run only on the guard's owner step. Moved bundled commit and push guards to their allowed steps and covered intervening flags in command patterns.
 - **`insights` step field is now actually populated.** `generate_context_md` rendered per-step `insights` (💡 lines) and the field was documented, but `start_workflow`/`rebuild_from_events` never copied it from the template into step state — so it silently rendered nothing. Both build sites now carry `insights`, matching the existing `suggest`-style optional fields. (`suggest` has the same latent gap; wire it the same way if a template ever uses it.)
 
 ### Changed
@@ -78,7 +85,8 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 - Live curses-based dashboard.
 - pytest suite covering event store, state machine, hooks, CLI, and behaviors.
 
-[Unreleased]: https://github.com/dioptx/weft/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dioptx/weft/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dioptx/weft/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dioptx/weft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dioptx/weft/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dioptx/weft/releases/tag/v0.1.0

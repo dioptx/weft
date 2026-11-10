@@ -9,6 +9,7 @@ Usage:
     python3 cli.py rebuild [workflow_id]
     python3 cli.py query [--type TYPE] [--last N] [--workflow ID]
     python3 cli.py analyze [--template NAME]
+    python3 cli.py check-plan <plan.json>
     python3 cli.py guard          # reads hook JSON from stdin
     python3 cli.py gate           # reads hook JSON from stdin (stop hook)
     python3 cli.py context        # outputs context.md to stdout
@@ -281,6 +282,25 @@ def cmd_guard(_args: list[str]) -> None:
     """Guard check for PreToolUse hook. Reads stdin."""
     from core import guard_engine
     guard_engine.main()
+
+
+def cmd_check_plan(args: list[str]) -> None:
+    """Validate a plan without reading workflow state or writing to a tracker."""
+    from core.plan_checker import check_plan
+
+    if len(args) != 1:
+        print("Usage: check-plan <plan.json>", file=sys.stderr)
+        sys.exit(2)
+    try:
+        plan = json.loads(Path(args[0]).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as exc:
+        print(f"plan: cannot read JSON: {str(exc)!r}", file=sys.stderr)
+        sys.exit(1)
+    errors = check_plan(plan)
+    if errors:
+        for error in errors:
+            print(error, file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_gate(_args: list[str]) -> None:
@@ -733,6 +753,7 @@ Commands:
   analyze                              Summarize event-log friction across runs
   doctor                               Diagnose workflow/state health
   save-template                        Save a JSON template from stdin
+  check-plan <plan.json>                Validate claims, milestones and tickets
   dashboard                            Launch the interactive TUI
   context                              Print context.md to stdout
   guard                                PreToolUse guard (reads hook JSON on stdin)
@@ -764,6 +785,7 @@ def main():
         "preview": cmd_preview,
         "doctor": cmd_doctor,
         "save-template": cmd_save_template,
+        "check-plan": cmd_check_plan,
         "dashboard": cmd_dashboard,
         "guard": cmd_guard,
         "gate": cmd_gate,

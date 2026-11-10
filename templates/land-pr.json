@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "name": "land-pr",
+  "description": "Prepare a PR, post review and preview evidence, then merge.",
+  "steps": [
+    {
+      "name": "prepare",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [
+        {
+          "command_pattern": "\\bgit\\b[^|;&\\n]*\\bpush\\b",
+          "message": "git push may run only during prepare, after the PR gate passes"
+        }
+      ],
+      "description": "Rebase on main, resolve bot comments, and run the PR gate using the project's skill, when it has one. Resolve conflicts and address findings, then push the prepared branch."
+    },
+    {
+      "name": "prove",
+      "context": "inline",
+      "on_fail": "block",
+      "loop_back_to": "prepare",
+      "max_iterations": 3,
+      "guards": [
+        {
+          "command_pattern": "\\bgh\\b[^|;&\\n]*\\bpr\\b[^|;&\\n]*\\bcomment\\b",
+          "message": "PR evidence comments may be posted only during prove"
+        }
+      ],
+      "exit_condition": "Review and preview evidence for the prepared revision is posted on the PR.",
+      "description": "Run the review and preview check, using the project's skill, when it has one, for each check. Post the results and evidence on the PR with gh pr comment. Use step loop-done only after reading back the posted evidence. If a fix changes the revision, use step loop-continue to return to prepare, push the fix there and repeat the checks. Stop for human resolution at the iteration limit."
+    },
+    {
+      "name": "land",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [
+        {
+          "command_pattern": "\\bgh\\b[^|;&\\n]*\\bpr\\b[^|;&\\n]*\\bmerge\\b",
+          "message": "gh pr merge may run only during land, after evidence is on the PR"
+        }
+      ],
+      "description": "Confirm the PR still points to the reviewed revision and its required checks pass. Merge with gh pr merge, using the project's skill, when it has one. Read the PR back to confirm it merged."
+    }
+  ]
+}

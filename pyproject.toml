@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "weft"
-version = "0.3.0"
+version = "0.4.0"
 description = "Deterministic workflow tracking with event-sourced logs for Claude Code"
 readme = "README.md"
 license = { file = "LICENSE" }

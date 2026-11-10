@@ -14,7 +14,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|Agent",
+        "matcher": "Bash|Edit|Write|Agent|mcp__.*",
         "hooks": [
           {
             "type": "command",
