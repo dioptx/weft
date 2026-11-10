@@ -140,7 +140,7 @@ JSON
 ## Features
 
 - **Event-sourced state machine** — append-only JSON log; rebuild state with `/wf-rebuild`
-- **Template system** — five bundled workflows (listed below); add your own under `templates/` (project), `~/.weft/templates/` (user-global), or `WEFT_USER_TEMPLATES_DIR`
+- **Template system** — six bundled workflows (listed below); add your own under `templates/` (project), `~/.weft/templates/` (user-global), or `WEFT_USER_TEMPLATES_DIR`
 - **Smart skills** — 12 slash commands (`wf-start`, `wf-step`, `wf-status`, `wf-resume`, `wf-run-step`, `wf-abort`, `wf-preview`, `wf-rebuild`, `wf-analyze`, `wf-template`, `wf-compose`, `ev-query`)
 - **Guard engine** — commands, file paths and MCP tool names restricted to their owner step via the `PreToolUse` hook
 - **Plan checker** — `weft check-plan plan.json` validates claim coverage, milestone dates, dependencies and completion criteria with no tracker access
@@ -155,11 +155,14 @@ JSON
 | `feature-workflow` | 11 | Develop a feature from context through review and push |
 | `codex-review` | 5 | Combine two code reviews and fix findings |
 | `land-pr` | 3 | Prepare, post review and preview evidence, then merge |
-| `plan-from-interview` | 7 | Extract claims, reconcile, draft, approve, publish and verify milestones and tickets |
+| `plan-from-interview` | 8 | Extract claims, reconcile, draft, approve, publish, verify and record a planning retrospective |
+| `plan-retro` | 2 | Gather ticket, PR and check results after build-out, then write a human-confirmed retrospective |
 
 See [the planning contract](docs/planning.md) for `plan.json`, optional whiteboard
 annotations and capacity evidence, existing issue reuse, and retry-safe
-publication. Planning ends at tickets and never starts a build.
+publication. Planning ends at tickets and never starts a build. The final
+planning step writes `planning/<slug>/retro.md`; `plan-retro` later adds the
+build-out section with evidence and human confirmation.
 
 ## Auditable by design
 
@@ -196,7 +199,7 @@ For scripting without curses, `scripts/wf-monitor.py` produces the same aligned-
 Suggested shell alias:
 
 ```bash
-alias wf='python3 ~/.claude/plugins/cache/local/weft/0.4.1/scripts/wf.py'
+alias wf='python3 ~/.claude/plugins/cache/local/weft/0.4.2/scripts/wf.py'
 ```
 
 ## Repository Layout
@@ -227,7 +230,7 @@ Same-named template higher in the table overrides lower tiers, so you can shadow
 
 ## Version
 
-**v0.4.1** — current. See [CHANGELOG.md](CHANGELOG.md) for release history.
+**v0.4.2** — current. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Contributing
 

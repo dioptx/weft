@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "name": "plan-retro",
+  "description": "After the tickets are built, gather actual results and add a human-confirmed build-out retrospective to the plan's retro.md.",
+  "steps": [
+    {
+      "name": "gather",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "description": "Run only after the planned build-out has ended. Read planning/<slug>/plan.json, plan.md, published.json and retro.md, including ## Planning. Using read-only commands, read the state of each ticket, its linked PR, its checks, and evidence of any reopened ticket or revert. For example, use gh issue view, gh pr view and gh pr checks, or equivalent read-only tracker tools. Save citations to actual outputs, URLs, test names, counts or source lines; distinguish missing or inaccessible evidence from a failed check. Do not invent evidence; omit any item with none. Do not modify tickets, PRs or code. If the build-out is still in progress, report that and stop before setting finished. In a shared repo use roles, not people."
+    },
+    {
+      "name": "write",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "exit_condition": "A person has confirmed or corrected the Build-out section, the corrections are incorporated, and the resulting retro.md is final.",
+      "description": "Add ## Build-out to planning/<slug>/retro.md using the fixed format below. Preserve the existing frontmatter fields plan, project and started, and preserve ## Planning. Set finished to the actual YYYY-MM-DD date when the build-out section is written. Update an existing ## Build-out on a retry instead of duplicating it; add no new format fields or headings.\n\n## Build-out\n\n### Went well\n- What worked. Evidence: a link, a test name, a count or a source line from this run.\n\n### Fell short\n- [drag] What cost time or quality. Evidence: ...\n- [defect] <project>/<slug>: What broke. Evidence: ...\n\n### Change next time\n- One concrete change to the workflow, with evidence from this run.\n\nEvery item must cite Evidence: gathered from this build-out. A [drag] is a process cost; defects use [defect] <project>/<slug>: and name the project and slug. Do not invent evidence, test names, links, counts or outcomes; omit any item with no evidence. A subsection with nothing to report says - None. Replace the example bullets with supported findings and base each concrete change on cited evidence. Use roles, not people in a shared repo. Ask a person to confirm or correct the draft before the file is final. Incorporate their corrections and record the confirmation or correction in the workflow step reason, using a role instead of a personal name. Complete this step only after that human review."
+    }
+  ]
+}

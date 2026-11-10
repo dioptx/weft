@@ -1,8 +1,10 @@
 # Planning from source material
 
 Start `weft start plan-from-interview` to collect inputs, extract claims,
-reconcile disagreements, draft a plan, get human approval, publish it and verify
-the tracker. This workflow ends at tickets. It never starts implementation.
+reconcile disagreements, draft a plan, get human approval, publish it, verify
+the tracker and record a planning retrospective. This workflow ends at tickets.
+It never starts implementation. After the tickets are built, run
+`weft start plan-retro` to add the build-out retrospective.
 
 Keep originals in `planning/<slug>/raw/`, transcribe the whiteboard before
 interpreting it, and preserve each interview question and answer word for word.
@@ -177,3 +179,72 @@ Read back the tracker during `verify` using read-only tools. Compare content,
 milestone membership, dependencies and existing issue links against both the
 plan and the journal. Verification may loop back to publish at most twice for
 repairs to approved content. At the limit, report unresolved mismatches.
+
+## Retrospectives
+
+The eighth and last `plan-from-interview` step, `retrospective`, writes
+`planning/<slug>/retro.md` after `verify`. It records what went well, what fell
+short and one concrete change to make next time. Each item cites evidence from
+the current run: saved checker output, review findings, answers to open
+questions or publication results. A ticket publish failure is evidence even
+when a retry later succeeds. An unsupported item stays out. The step uses
+`on_fail: continue`, so a failure to write the retrospective does not change the
+plan's result.
+
+After the tickets are built, `weft start plan-retro` runs two steps:
+
+1. `gather` reads the plan, the existing retrospective, and each ticket's state,
+   linked PR, checks, reopened-ticket history and reverts using read-only
+   commands. It collects actual evidence without modifying tracker items or
+   code. Missing access or missing output is unknown, not proof of a failure.
+   A build-out still in progress stops here before setting `finished`.
+2. `write` preserves the frontmatter and `## Planning`, adds `## Build-out`,
+   and sets `finished` to the actual date the build-out section is written.
+   A person must confirm or correct the draft before the file is final. Their
+   corrections are incorporated and the confirmation or correction is recorded
+   in the workflow step reason. Retrying updates the existing section instead
+   of duplicating it.
+
+The file format is fixed for its readers. Keep these frontmatter keys, section
+names, heading levels and tags unchanged. This shows the complete layout after
+build-out; during planning, leave `finished:` empty and omit `## Build-out`
+until the tickets are built:
+
+```markdown
+---
+plan: <slug>
+project: <repo or project name>
+started: YYYY-MM-DD
+finished: YYYY-MM-DD
+---
+
+## Planning
+
+### Went well
+- What worked. Evidence: a link, a test name, a count or a source line.
+
+### Fell short
+- [drag] What cost time or quality. Evidence: ...
+- [defect] <project>/<slug>: What broke. Evidence: ...
+
+### Change next time
+- One concrete change to the workflow.
+
+## Build-out
+
+### Went well
+### Fell short
+### Change next time
+```
+
+Replace example bullets with supported findings. Every item under `Went well`
+and `Fell short` must have `Evidence:`; both workflows also require evidence for
+each proposed change. An item without evidence stays out. Do not invent links,
+test names, counts or outcomes. A subsection with nothing to report says
+`- None.`. Use `[drag]` for a process cost and
+`[defect] <project>/<slug>:` for a bug, naming the project and slug. In a shared
+repo, use roles rather than personal names. `finished` remains empty until the
+build-out section is written.
+
+These templates give the agent instructions for writing and human review;
+advancing the CLI state does not itself write or confirm the retrospective.

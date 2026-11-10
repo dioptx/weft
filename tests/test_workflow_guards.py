@@ -179,7 +179,7 @@ def test_plan_review_and_bounded_verification_loops(project_dir):
         assert state["steps"][state["current_step"]]["name"] == "publish"
         state = state_machine.step_complete(state, "", "test", pdir)
     rebuilt = state_machine.rebuild_from_events(pdir, state["workflow_id"])
-    assert rebuilt["steps"][-1]["loop_count"] == 2
+    assert next(step for step in rebuilt["steps"] if step["name"] == "verify")["loop_count"] == 2
     state = state_machine.step_loop_back(state, "still mismatched", "test", pdir)
     assert state["status"] == "failed"
     assert state["steps"][state["current_step"]]["name"] == "verify"
