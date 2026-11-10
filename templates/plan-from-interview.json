@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "name": "plan-from-interview",
-  "description": "Turn source material into an approved, traceable plan and publish milestones and tickets. Stop at the tickets; never start a build.",
+  "description": "Turn source material into an approved, traceable plan, publish milestones and tickets, and record a planning retrospective. Stop at the tickets; never start a build.",
   "steps": [
     {
       "name": "intake",
@@ -79,7 +79,14 @@
       "loop_back_to": "publish",
       "max_iterations": 2,
       "exit_condition": "The tracker readback matches plan.json and published.json, with every milestone and ticket accounted for and no duplicates.",
-      "description": "Read milestones, tickets, existing issue links, project membership and dependencies back from the tracker and compare with planning/<slug>/plan.json and published.json. Save the comparison. Use step loop-continue to return to publish for approved-content repairs at most twice; when the limit is reached, stop and report unresolved mismatches. Plan changes require renewed human review. Use step loop-done only when the readback matches. Ticket creation ends this workflow; never start a build."
+      "description": "Read milestones, tickets, existing issue links, project membership and dependencies back from the tracker and compare with planning/<slug>/plan.json and published.json. Save the comparison. Use step loop-continue to return to publish for approved-content repairs at most twice; when the limit is reached, stop and report unresolved mismatches. Plan changes require renewed human review. Use step loop-done only when the readback matches, then continue to retrospective. Never start a build."
+    },
+    {
+      "name": "retrospective",
+      "context": "inline",
+      "on_fail": "continue",
+      "guards": [],
+      "description": "Write planning/<slug>/retro.md using this fixed format. In a shared repo use roles, not people; keep examples generic. Use the run's actual start date and leave finished empty until the build-out section is written.\n\n---\nplan: <slug>\nproject: <repo or project name>\nstarted: YYYY-MM-DD\nfinished:\n---\n\n## Planning\n\n### Went well\n- What worked. Evidence: a link, a test name, a count or a source line from this run.\n\n### Fell short\n- [drag] What cost time or quality. Evidence: ...\n- [defect] <project>/<slug>: What broke. Evidence: ...\n\n### Change next time\n- One concrete change to the workflow, with evidence from this run.\n\nEvery item must cite Evidence: from this run. Read the saved checker output, the review, the answers to open questions and publication results; a ticket publish failure is evidence even if a retry succeeded. A [drag] is a process cost; a [defect] is a bug and names the project and slug. Do not invent evidence, test names, links, counts or answers; omit any item with no evidence. A subsection with nothing to report says - None. Replace the example bullets with supported findings. Base each concrete change on cited evidence. Preserve existing frontmatter and sections on a retry; do not duplicate ## Planning. Do not add ## Build-out yet or start implementation. If writing the retrospective fails, report that failure and continue without changing the plan's result."
     }
   ]
 }

@@ -4,6 +4,13 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-11-10
+
+### Added
+- A final `retrospective` step in `plan-from-interview` writes the evidence-backed `## Planning` section in `planning/<slug>/retro.md`. Its `on_fail: continue` policy preserves the plan's result if the retrospective cannot be written.
+- `plan-retro`, a two-step workflow after tickets are built: gather read-only ticket, PR, check, reopen and revert evidence, then add `## Build-out`, set `finished` and obtain human confirmation or correction. Both workflows preserve the fixed retrospective format and omit unsupported items.
+- Retrospective template tests cover ordering, format, evidence, human review, discovery, advancement, rebuilding and non-blocking planning behavior.
+
 ## [0.4.1] — 2026-11-10
 
 ### Fixed
@@ -94,7 +101,8 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 - Live curses-based dashboard.
 - pytest suite covering event store, state machine, hooks, CLI, and behaviors.
 
-[Unreleased]: https://github.com/dioptx/weft/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/dioptx/weft/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/dioptx/weft/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/dioptx/weft/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dioptx/weft/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dioptx/weft/compare/v0.2.0...v0.3.0
