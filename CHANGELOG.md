@@ -4,6 +4,15 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-11-10
+
+### Fixed
+- `check-plan` now rejects unresolved open claims, placeholder ticket content, completion criteria that repeat the title, missing ticket rationale or scope, malformed `existing_issue` references, and confirmed relationships without matching ticket dependencies. Validation remains offline and uses only the standard library.
+
+### Added
+- `check-plan --allow-open` for interim drafts: prints the total open-claim count while keeping every other validation rule, including the ban on citing open claims.
+- Generic regression tests for each review-readiness rule, including a placeholder plan with 47 open claims.
+
 ## [0.4.0] — 2026-11-10
 
 ### Added
@@ -85,7 +94,8 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 - Live curses-based dashboard.
 - pytest suite covering event store, state machine, hooks, CLI, and behaviors.
 
-[Unreleased]: https://github.com/dioptx/weft/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/dioptx/weft/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/dioptx/weft/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dioptx/weft/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dioptx/weft/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/dioptx/weft/compare/v0.1.0...v0.2.0

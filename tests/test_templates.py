@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from core import templates
 
 
@@ -195,3 +197,129 @@ class TestFeatureWorkflowTemplate:
                 old_patterns = [g.get("command_pattern", g) if isinstance(g, dict) else g
                                 for g in step.get("guards", [])]
                 assert not any(re.search(p, command) for p in old_patterns)
+
+
+@pytest.fixture
+def interview_steps(project_dir, tmp_path, monkeypatch):
+    monkeypatch.setenv("WEFT_USER_TEMPLATES_DIR", str(tmp_path / "user-templates"))
+    template = templates.load_template("plan-from-interview", str(project_dir))
+    assert template is not None
+    return {step["name"]: step for step in template["steps"]}
+
+
+class TestPlanFromInterviewTemplate:
+    """The agent receives the evidence and reconcile contracts in its steps."""
+
+    def test_legend_precedes_item_reading(self, interview_steps):
+        extract = interview_steps["extract"]["description"]
+        assert extract.startswith("First record the board's legend")
+        for meaning in ("units", "letters", "priority tags", "arrows", "colours"):
+            assert meaning in extract
+        assert extract.index("legend") < extract.index("Then transcribe")
+        assert "Read each field through the legend" in extract
+
+    def test_uncertainty_belongs_to_each_field(self, interview_steps):
+        extract = interview_steps["extract"]["description"]
+        assert "value, source and status" in extract
+        assert "read, inferred or unclear" in extract
+        assert "an unclear priority does not make the whole item unclear" in extract
+        for field in ("estimate", "priority", "owner", "horizon", "column"):
+            assert field in extract
+
+    @pytest.mark.parametrize("kind, endpoints", [
+        ("relationship", "source locators"), ("duplicate", "claim ids"),
+    ])
+    def test_relationship_and_duplicate_claims_keep_endpoints(
+        self, interview_steps, kind, endpoints
+    ):
+        extract = interview_steps["extract"]["description"]
+        assert f'kind: "{kind}"' in extract
+        assert "from and to" in extract
+        assert endpoints in extract
+        assert "direction" in extract
+        assert "Preserve both source records" in extract
+        assert "relationship claims" in interview_steps["draft"]["description"]
+
+    def test_displayed_totals_are_checked(self, interview_steps):
+        extract = interview_steps["extract"]["description"]
+        assert "add its parts" in extract
+        assert "units and time periods" in extract
+        assert "shown total, sum and difference" in extract
+        assert "Raise each mismatch as an open question" in extract
+
+    def test_existing_issue_state_is_checked_before_drafting(self, interview_steps):
+        extract = interview_steps["extract"]["description"]
+        assert "owner/repo#N" in extract
+        assert "read-only tracker lookup" in extract
+        assert "state and URL" in extract
+        assert "closed issue" in extract
+        assert "open question" in extract
+
+    def test_only_a_named_person_can_confirm(self, interview_steps):
+        extract = interview_steps["extract"]["description"]
+        reconcile = interview_steps["reconcile"]["description"]
+        assert "A model's reading is read, never confirmed" in extract
+        assert "Only a named person may confirm a claim" in reconcile
+        assert "who confirmed it" in reconcile
+        assert "verbatim answer and source locator" in reconcile
+
+    def test_reconcile_requires_the_strict_checker_and_no_open_questions(self, interview_steps):
+        reconcile = interview_steps["reconcile"]
+        command = "weft check-plan planning/<slug>/plan.json"
+        assert f"{command} exits 0" in reconcile["exit_condition"]
+        assert "no open questions remain" in reconcile["exit_condition"]
+        assert f"Run {command} without --allow-open" in reconcile["description"]
+        assert reconcile["on_fail"] == "block"
+        assert reconcile["loop_back_to"] == "reconcile"
+        assert reconcile["max_iterations"] == 20
+
+    def test_no_person_path_stops_before_final_tickets(self, interview_steps):
+        reconcile = interview_steps["reconcile"]["description"]
+        assert "If no person can answer, stop at reconcile" in reconcile
+        assert "report all open questions" in reconcile
+        assert "Do not draft final tickets" in reconcile
+        assert "never treat the limit as approval" in reconcile
+
+    def test_acceptance_criteria_need_a_person_or_cited_source(self, interview_steps):
+        draft = interview_steps["draft"]["description"]
+        assert "Acceptance criteria must come from a person or a cited source" in draft
+        assert "done_when" in draft
+        assert "Never invent acceptance criteria to fill a field" in draft
+        assert "Missing criteria are open questions" in draft
+
+    def test_workflow_start_preserves_the_reconcile_contract(self, project_dir, interview_steps):
+        from core import state_machine
+
+        template = {"name": "plan-from-interview", "schema_version": 2,
+                    "steps": list(interview_steps.values())}
+        state = state_machine.start_workflow(template, "test", str(project_dir))
+        for _ in range(2):
+            state = state_machine.step_complete(state, "source captured", "test", str(project_dir))
+        current = state["steps"][state["current_step"]]
+        assert current["name"] == "reconcile"
+        assert current["exit_condition"] == interview_steps["reconcile"]["exit_condition"]
+        assert "no open questions remain" in current["exit_condition"]
+        assert "If no person can answer, stop at reconcile" in current["description"]
+
+    def test_publish_writes_approved_criteria_as_numbered_gates(self, interview_steps):
+        publish = interview_steps["publish"]["description"]
+        assert "## Gates" in publish
+        assert "approved done_when criteria" in publish
+        assert "one line per criterion in plan order" in publish
+        assert "- G1: <approved criterion>" in publish
+        assert "- G2: <approved criterion>" in publish
+        assert "Never invent gates" in publish
+        assert "Preserve approved test or check annotations" in publish
+
+    def test_publish_lists_only_plan_excluded_paths(self, interview_steps):
+        publish = interview_steps["publish"]["description"]
+        assert "When out_of_spec names excluded paths" in publish
+        assert "## Out of scope" in publish
+        assert "copy each path verbatim on its own bullet line" in publish
+        assert "Omit that section when no excluded paths are named" in publish
+
+    def test_publish_without_approved_criteria_returns_to_reconcile(self, interview_steps):
+        publish = interview_steps["publish"]["description"]
+        assert "Before any ticket write" in publish
+        assert "If a ticket has no approved criteria, do not publish it" in publish
+        assert "return to reconcile and report the missing criteria" in publish

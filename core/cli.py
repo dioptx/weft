@@ -9,7 +9,7 @@ Usage:
     python3 cli.py rebuild [workflow_id]
     python3 cli.py query [--type TYPE] [--last N] [--workflow ID]
     python3 cli.py analyze [--template NAME]
-    python3 cli.py check-plan <plan.json>
+    python3 cli.py check-plan [--allow-open] <plan.json>
     python3 cli.py guard          # reads hook JSON from stdin
     python3 cli.py gate           # reads hook JSON from stdin (stop hook)
     python3 cli.py context        # outputs context.md to stdout
@@ -286,17 +286,22 @@ def cmd_guard(_args: list[str]) -> None:
 
 def cmd_check_plan(args: list[str]) -> None:
     """Validate a plan without reading workflow state or writing to a tracker."""
-    from core.plan_checker import check_plan
+    import argparse
+    from core.plan_checker import check_plan, open_claim_count
 
-    if len(args) != 1:
-        print("Usage: check-plan <plan.json>", file=sys.stderr)
-        sys.exit(2)
+    parser = argparse.ArgumentParser(prog="weft check-plan")
+    parser.add_argument("plan", metavar="plan.json")
+    parser.add_argument("--allow-open", action="store_true",
+                        help="allow unresolved open claims in an interim draft and print their count")
+    options = parser.parse_args(args)
     try:
-        plan = json.loads(Path(args[0]).read_text(encoding="utf-8"))
+        plan = json.loads(Path(options.plan).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError) as exc:
         print(f"plan: cannot read JSON: {str(exc)!r}", file=sys.stderr)
         sys.exit(1)
-    errors = check_plan(plan)
+    if options.allow_open:
+        print(f"Open claims: {open_claim_count(plan)}")
+    errors = check_plan(plan, allow_open=options.allow_open)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)
@@ -753,7 +758,7 @@ Commands:
   analyze                              Summarize event-log friction across runs
   doctor                               Diagnose workflow/state health
   save-template                        Save a JSON template from stdin
-  check-plan <plan.json>                Validate claims, milestones and tickets
+  check-plan [--allow-open] <plan.json> Validate claims, milestones and tickets
   dashboard                            Launch the interactive TUI
   context                              Print context.md to stdout
   guard                                PreToolUse guard (reads hook JSON on stdin)
