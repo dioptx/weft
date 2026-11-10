@@ -1,0 +1,85 @@
+{
+  "schema_version": 2,
+  "name": "plan-from-interview",
+  "description": "Turn source material into an approved, traceable plan and publish milestones and tickets. Stop at the tickets; never start a build.",
+  "steps": [
+    {
+      "name": "intake",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "description": "Choose a slug and copy the whiteboard photo, interview transcript and braindump, when supplied, to planning/<slug>/raw/. Preserve originals and number text lines. If no transcript exists, run a structured interview one question at a time and save each question and answer word for word. Cover the outcome and its date, users, in and out of scope, known work, dependencies, risks, who decides, capacity and how done is proved. Record the tracker (GitHub or Linear), target repository or project, and available tool names. Do not publish anything."
+    },
+    {
+      "name": "extract",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "description": "Transcribe the whiteboard to planning/<slug>/raw/whiteboard.txt before interpreting it; a photo can be misread. Give every box, column, arrow and table a stable locator. Preserve original text in every language, including mixed-language items; keep any translation separately and mark uncertain readings open. Write every claim to planning/<slug>/plan.json with id, text, source (for example transcript:L12, braindump:L3 or whiteboard:box-4), and status confirmed, inferred or open. For each whiteboard item, when present, record its circled estimate (including units or scale), priority tag, owner initial, horizon or column, arrow endpoints and direction as dependencies, and existing issue numbers or identifiers with tracker context. Do not guess missing values or arrow meanings: mark them open and reconcile. Transcribe a capacity table with its row and column labels, units, time periods and values; store it in plan.json as capacity data with source locators and supporting claim ids. Keep item metadata and capacity evidence attached to the relevant claims and carry them into milestones and tickets. Follow the generic schema in docs/planning.md; additional provenance fields are optional."
+    },
+    {
+      "name": "reconcile",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "loop_back_to": "reconcile",
+      "max_iterations": 20,
+      "exit_condition": "No open claim or source disagreement blocks a milestone.",
+      "description": "List disagreements between sources, uncertain transcriptions, ambiguous arrows and unresolved item or capacity metadata. Ask a person one question at a time and record answers verbatim with source locators. Update claim statuses and keep the evidence trail. Repeat with step loop-continue until the exit condition holds, then step loop-done. If the iteration limit is reached, stop for human resolution; never treat the limit as approval."
+    },
+    {
+      "name": "draft",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "loop_back_to": "draft",
+      "max_iterations": 20,
+      "exit_condition": "weft check-plan planning/<slug>/plan.json exits zero and plan.md matches plan.json.",
+      "description": "Write milestones and tickets to planning/<slug>/plan.json and plan.md using docs/planning.md. Every ticket has why, in_spec, out_of_spec, done_when, dependencies and claim_ids. Carry through estimates, priorities, owners, horizons, dependencies, language-preserving text and capacity evidence when present. Resolve existing issue identifiers by read-only tracker lookup and record existing_issue links on those tickets; link and reuse them instead of creating duplicates. Account for every confirmed claim by citation or a dropped entry with a reason. Cite claims for milestone dates. Run python3 core/cli.py check-plan planning/<slug>/plan.json from the plugin root (or weft check-plan when installed); fix all errors and regenerate plan.md. Use step loop-continue for another draft and step loop-done only when the checker passes. Stop for human help at the iteration limit."
+    },
+    {
+      "name": "review",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "loop_back_to": "draft",
+      "max_iterations": 20,
+      "exit_condition": "A person has read plan.md and explicitly approved this exact plan revision; approval is recorded.",
+      "description": "Have a person read planning/<slug>/plan.md, including dropped claims, capacity, existing issue links and inferred assumptions. Record their approval and the plan revision it covers. Requested changes use step loop-continue to return to draft, then require a fresh review. Use step loop-done only with explicit approval. Stop for human resolution at the iteration limit."
+    },
+    {
+      "name": "publish",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [
+        {
+          "command_pattern": "\\bgh\\b[^|;&\\n]*\\bissue\\b[^|;&\\n]*\\bcreate\\b",
+          "message": "GitHub issues may be created only during publish after plan approval"
+        },
+        {
+          "command_pattern": "\\bgh\\b[^|;&\\n]*\\bproject\\b[^|;&\\n]*\\bitem-add\\b",
+          "message": "GitHub project items may be added only during publish after plan approval"
+        },
+        {
+          "command_pattern": "\\bgh\\b(?=[^|;&\\n]*\\bapi\\b)(?=[^|;&\\n]*/milestones\\b)(?=[^|;&\\n]*(?:--method(?:=|[ \\t]+)(?i:POST|PATCH|PUT|DELETE)\\b|-X[ \\t]*(?i:POST|PATCH|PUT|DELETE)\\b|[ \\t](?:-[fF]|--(?:raw-)?field(?:[= \\t]|$)|--input(?:[= \\t]|$))))[^|;&\\n]*",
+          "message": "GitHub milestone API writes may run only during publish after plan approval"
+        },
+        {
+          "command_pattern": "(?i)^mcp__.*linear.*__(?:.*_)?(?:create|update|delete|save|archive|unarchive|add|remove)(?:_.*)?$",
+          "message": "Linear MCP writes may run only during publish after plan approval"
+        }
+      ],
+      "description": "This is the only step that may create milestones or tickets or write to the tracker. Re-run the checker and confirm approval still covers the current plan. Publish to the recorded GitHub or Linear target using only the guarded write commands or tools. First read planning/<slug>/published.json and look up existing_issue links; reuse those issues instead of creating them. Use stable plan ids plus a plan-specific marker in tracker items, and read the tracker for that marker before every create or retry, including after an uncertain response. Reuse matching milestones and project memberships too. After each created, linked or recovered item, atomically update published.json with the plan id, tracker id, URL and revision. If interrupted between a tracker write and the journal update, recover by marker lookup before retrying; never blindly create again. Publish only the approved content and stop at tickets; do not implement them or start a build."
+    },
+    {
+      "name": "verify",
+      "context": "inline",
+      "on_fail": "block",
+      "guards": [],
+      "loop_back_to": "publish",
+      "max_iterations": 2,
+      "exit_condition": "The tracker readback matches plan.json and published.json, with every milestone and ticket accounted for and no duplicates.",
+      "description": "Read milestones, tickets, existing issue links, project membership and dependencies back from the tracker and compare with planning/<slug>/plan.json and published.json. Save the comparison. Use step loop-continue to return to publish for approved-content repairs at most twice; when the limit is reached, stop and report unresolved mismatches. Plan changes require renewed human review. Use step loop-done only when the readback matches. Ticket creation ends this workflow; never start a build."
+    }
+  ]
+}

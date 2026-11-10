@@ -14,12 +14,7 @@
       "name": "scope-check",
       "context": "inline",
       "on_fail": "block",
-      "guards": [
-        {
-          "command_pattern": "git (commit|push)",
-          "message": "No commits until scope is confirmed"
-        }
-      ],
+      "guards": [],
       "description": "Identify gaps in requirements, prompt user for clarification. Interactive step."
     },
     {
@@ -41,12 +36,7 @@
       "context": "inline",
       "skill": "/aot-plan",
       "on_fail": "block",
-      "guards": [
-        {
-          "command_pattern": "git push",
-          "message": "No push until plan is reviewed"
-        }
-      ],
+      "guards": [],
       "description": "Create feature plan + worktree + AoT decomposition."
     },
     {
@@ -79,7 +69,12 @@
       "name": "sanitize-push",
       "context": "inline",
       "on_fail": "block",
-      "guards": [],
+      "guards": [
+        {
+          "command_pattern": "\\bgit\\b[^|;&\\n]*\\b(commit|push)\\b",
+          "message": "git commit and git push may run only during sanitize-push, after scope, review and tests are complete"
+        }
+      ],
       "description": "Clean up code, sanitize secrets/company names, push to branch."
     },
     {

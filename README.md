@@ -71,11 +71,13 @@ cat > flow.json << 'EOF'
   "name": "site-audit",
   "steps": [
     {"name": "crawl",  "skill": "/perplexity"},
-    {"name": "review", "skill": "/staff-review",
-     "guards": [{"command_pattern": "git push", "message": "no push during review"}]},
+    {"name": "review", "skill": "/staff-review"},
     {"name": "fix",    "skill": "/fix-polish"},
     {"name": "verify", "loop_back_to": "review", "max_iterations": 3,
-     "exit_condition": "no high-severity findings"}
+     "exit_condition": "no high-severity findings"},
+    {"name": "push",
+     "guards": [{"command_pattern": "\\bgit\\b[^|;&\\n]*\\bpush\\b",
+                 "message": "git push may run only during push, after verification"}]}
   ]
 }
 EOF
@@ -84,6 +86,27 @@ weft start site-audit
 ```
 
 For interactive composition based on what's in your current conversation, use `/wf-compose`.
+
+## How guards work
+
+A guard means **this command may run only on its owner step**. During a running
+workflow, the engine skips the current step's guards and checks every other
+step's guards. A match there blocks the call. Put each command's guard on one
+step: putting the same guard on two steps blocks the command on every step,
+because another owner's guard always matches.
+
+Guards are regular expressions in `command_pattern` (or plain strings). For
+Bash they match the command, for Edit and Write the file path, and for other
+tools the tool name, including MCP names such as `mcp__linear__create_issue`.
+Write patterns that cover flags between command words: `\bgit\b[^|;&\n]*\bpush\b`
+matches both `git push` and `git -C work push`. JSON requires doubled backslashes,
+as in the example above. These are regex checks over tool calls, not a shell
+parser. Existing per-run approvals can allow exact Bash commands.
+
+Step descriptions and exit conditions guide the agent; the state machine does
+not execute checks or collect human approval automatically. Claude Code hooks
+enforce the guards when registered; running the CLI alone exercises the state
+machine without installing tool enforcement in another agent.
 
 ## Extend with your own skills
 
@@ -117,13 +140,26 @@ JSON
 ## Features
 
 - **Event-sourced state machine** — append-only JSON log; rebuild state with `/wf-rebuild`
-- **Template system** — `generic` (3 steps) and `feature-workflow` (11 steps) bundled; add your own under `templates/` (project), `~/.weft/templates/` (user-global), or `WEFT_USER_TEMPLATES_DIR`
+- **Template system** — five bundled workflows (listed below); add your own under `templates/` (project), `~/.weft/templates/` (user-global), or `WEFT_USER_TEMPLATES_DIR`
 - **Smart skills** — 12 slash commands (`wf-start`, `wf-step`, `wf-status`, `wf-resume`, `wf-run-step`, `wf-abort`, `wf-preview`, `wf-rebuild`, `wf-analyze`, `wf-template`, `wf-compose`, `ev-query`)
-- **Guard engine** — per-step `allowed-tools` and `blocked-commands` enforced via `PreToolUse` hook
+- **Guard engine** — commands, file paths and MCP tool names restricted to their owner step via the `PreToolUse` hook
+- **Plan checker** — `weft check-plan plan.json` validates claim coverage, milestone dates, dependencies and completion criteria with no tracker access
 - **Stop gate** — refuses session exit while steps are incomplete (configurable via `on_fail: block|retry|skip`)
 - **Compaction-safe** — `PreCompact` hook writes a `context.md` projection so the next session resumes mid-workflow
 - **Live dashboard** — auto-refreshing TUI for monitoring active workflows
 - **Template management** — `/wf-template` for creating and editing templates in-session
+
+| Bundled template | Steps | Purpose |
+|---|---|---|
+| `generic` | 3 | Plan, implement and verify |
+| `feature-workflow` | 11 | Develop a feature from context through review and push |
+| `codex-review` | 5 | Combine two code reviews and fix findings |
+| `land-pr` | 3 | Prepare, post review and preview evidence, then merge |
+| `plan-from-interview` | 7 | Extract claims, reconcile, draft, approve, publish and verify milestones and tickets |
+
+See [the planning contract](docs/planning.md) for `plan.json`, optional whiteboard
+annotations and capacity evidence, existing issue reuse, and retry-safe
+publication. Planning ends at tickets and never starts a build.
 
 ## Auditable by design
 
@@ -160,7 +196,7 @@ For scripting without curses, `scripts/wf-monitor.py` produces the same aligned-
 Suggested shell alias:
 
 ```bash
-alias wf='python3 ~/.claude/plugins/cache/local/weft/0.3.0/scripts/wf.py'
+alias wf='python3 ~/.claude/plugins/cache/local/weft/0.4.0/scripts/wf.py'
 ```
 
 ## Repository Layout
@@ -171,7 +207,7 @@ core/             Python event store, state machine, projections, CLI, dashboard
 hooks/            SessionStart / PreToolUse / PreCompact / Stop bash hooks + hooks.json
 skills/           11 SKILL.md files for the /wf-* and /ev-* slash commands
 scripts/          wf.py (curses TUI) + wf-monitor.py (plain-text + JSON viewer)
-templates/        generic.json, feature-workflow.json (workflow definitions)
+templates/        Bundled workflow definitions (JSON)
 tests/            pytest suite covering event store, state machine, hooks, CLI, behaviors
 ```
 
@@ -191,7 +227,7 @@ Same-named template higher in the table overrides lower tiers, so you can shadow
 
 ## Version
 
-**v0.3.0** — current. See [CHANGELOG.md](CHANGELOG.md) for release history.
+**v0.4.0** — current. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Contributing
 

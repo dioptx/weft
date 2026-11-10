@@ -7,12 +7,7 @@
       "name": "setup",
       "skill": null,
       "on_fail": "block",
-      "guards": [
-        {
-          "command_pattern": "git push",
-          "message": "No push until both reviews complete"
-        }
-      ],
+      "guards": [],
       "description": "Identify the target: user provides a branch name, PR URL, or we use the current branch. Run git diff against the base branch (main/master) to understand the changeset. Save diff stats to .review/diff-summary.md."
     },
     {
@@ -43,7 +38,12 @@
       "name": "final-check",
       "skill": null,
       "on_fail": "block",
-      "guards": [],
+      "guards": [
+        {
+          "command_pattern": "\\bgit\\b[^|;&\\n]*\\bpush\\b",
+          "message": "git push may run only during final-check, after both reviews and tests are complete and the user requests a push"
+        }
+      ],
       "description": "Run the full test suite. Verify no regressions. Print a summary of what was fixed and what was accepted as-is. Changes remain local -- push decision is up to the user."
     }
   ]

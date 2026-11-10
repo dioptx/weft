@@ -37,6 +37,8 @@ def evaluate(hook_input: dict, project_dir: str | None = None) -> dict | None:
         command = hook_input.get("tool_input", {}).get("command", "")
     elif tool_name in ("Edit", "Write"):
         command = hook_input.get("tool_input", {}).get("file_path", "")
+    else:
+        command = tool_name
 
     if not command:
         return None
