@@ -12,6 +12,14 @@ PLUGIN_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PLUGIN_ROOT))
 
 
+@pytest.fixture(autouse=True)
+def agentry_events_path(tmp_path, monkeypatch):
+    """Isolate guard telemetry, including hook subprocesses, from the real stream."""
+    path = tmp_path / "agentry" / "events.jsonl"
+    monkeypatch.setenv("AGENTRY_EVENTS_PATH", str(path))
+    return path
+
+
 @pytest.fixture
 def project_dir(tmp_path):
     """Create an isolated project directory with .claude/weft/ structure."""
