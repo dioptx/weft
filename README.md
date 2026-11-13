@@ -89,6 +89,12 @@ For interactive composition based on what's in your current conversation, use `/
 
 ## How guards work
 
+Each denial also appends a JSONL event to `~/.local/state/agentry/events.jsonl`.
+Set `AGENTRY_EVENTS_PATH` to override that path. The event contains `event: "guard"`,
+`tool`, `input` (the refused command or file path), and `rule` (the matched regex).
+`build_id` and `task` come from the JSON object in `AGENT_P_TAGS`; missing or invalid
+tags produce null values. A stream write failure warns but still denies the call.
+
 A guard means **this command may run only on its owner step**. During a running
 workflow, the engine skips the current step's guards and checks every other
 step's guards. A match there blocks the call. Put each command's guard on one

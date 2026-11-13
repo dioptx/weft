@@ -1,11 +1,65 @@
 """Tests for guard_engine.py — regex-based PreToolUse guard enforcement."""
 
+import json
+
 import pytest
 
 from core import event_store, guard_engine, state_machine
 
 
 class TestGuardEvaluation:
+    @pytest.mark.parametrize("tags", [None, "invalid json", "[]"])
+    def test_denial_without_valid_tags(
+        self, project_dir, guarded_template, agentry_events_path, monkeypatch, tags,
+    ):
+        if tags is None:
+            monkeypatch.delenv("AGENT_P_TAGS", raising=False)
+        else:
+            monkeypatch.setenv("AGENT_P_TAGS", tags)
+        state_machine.start_workflow(guarded_template, "s1", str(project_dir))
+        result = guard_engine.evaluate(
+            {"tool_name": "Bash", "tool_input": {"command": "git push"}}, str(project_dir),
+        )
+        assert result["blocked"] is True
+        event = json.loads(agentry_events_path.read_text())
+        assert event["event"] == "guard"
+        assert event["build_id"] is None
+        assert event["task"] is None
+
+    def test_stream_failure_preserves_denial(
+        self, project_dir, guarded_template, agentry_events_path, capsys,
+    ):
+        agentry_events_path.parent.mkdir(parents=True)
+        agentry_events_path.mkdir()  # A directory cannot be opened for append.
+        state_machine.start_workflow(guarded_template, "s1", str(project_dir))
+        result = guard_engine.evaluate(
+            {"tool_name": "Bash", "tool_input": {"command": "git push"}}, str(project_dir),
+        )
+        assert result["blocked"] is True
+        assert "could not append agentry guard event" in capsys.readouterr().err
+
+    def test_denial_appends_one_agentry_event(
+        self, project_dir, guarded_template, agentry_events_path, monkeypatch,
+    ):
+        monkeypatch.setenv("AGENT_P_TAGS", '{"build_id":"build-2","task":"weft-2"}')
+        pdir = str(project_dir)
+        state_machine.start_workflow(guarded_template, "s1", pdir)
+        agentry_events_path.parent.mkdir(parents=True)
+        agentry_events_path.write_text('{"event":"existing"}\n')
+        command = "git push origin main\necho 'refused'"
+        result = guard_engine.evaluate(
+            {"tool_name": "Bash", "tool_input": {"command": command}}, pdir,
+        )
+        assert result["blocked"] is True
+        events = [json.loads(line) for line in agentry_events_path.read_text().splitlines()]
+        assert events == [
+            {"event": "existing"},
+            {"event": "guard", "tool": "Bash", "input": command,
+             "rule": "git (commit|push)", "build_id": "build-2", "task": "weft-2"},
+        ]  # Both scope and deploy match, but only the first guard fires.
+        guard_engine.evaluate({"tool_name": "Bash", "tool_input": {"command": "ls"}}, pdir)
+        assert len(agentry_events_path.read_text().splitlines()) == 2
+
     def test_blocks_guarded_command(self, project_dir, guarded_template):
         """Guard on scope step blocks git commit during gather step."""
         pdir = str(project_dir)

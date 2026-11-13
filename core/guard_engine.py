@@ -1,5 +1,6 @@
 """Guard engine — evaluate whether a tool call is allowed in the current step."""
 
+import fcntl
 import json
 import os
 import re
@@ -7,6 +8,31 @@ import sys
 from pathlib import Path
 
 from . import event_store, state_machine
+
+
+def _append_agentry_guard(tool: str, refused_input: str, rule: str) -> None:
+    """Mirror a denial to agentry without letting telemetry failures allow it."""
+    try:
+        tags = json.loads(os.environ.get("AGENT_P_TAGS", "{}"))
+    except json.JSONDecodeError:
+        tags = {}
+    if not isinstance(tags, dict):
+        tags = {}
+    event = {
+        "event": "guard", "tool": tool, "input": refused_input, "rule": rule,
+        "build_id": tags.get("build_id"), "task": tags.get("task"),
+    }
+    try:
+        path = Path(os.environ.get(
+            "AGENTRY_EVENTS_PATH", "~/.local/state/agentry/events.jsonl",
+        )).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX)
+            stream.write(json.dumps(event, separators=(",", ":")) + "\n")
+            stream.flush()  # Flush while locked; closing releases the lock.
+    except OSError as exc:
+        print(f"[weft] Warning: could not append agentry guard event: {exc}", file=sys.stderr)
 
 
 def _approved_commands(project_dir: str | None) -> set[str]:
@@ -76,6 +102,7 @@ def evaluate(hook_input: dict, project_dir: str | None = None) -> dict | None:
                         workflow_id=state["workflow_id"],
                         project_dir=project_dir,
                     )
+                    _append_agentry_guard(tool_name, command, pattern)
                     return {"blocked": True, "reason": msg}
             except re.error as e:
                 print(f"[weft] Warning: invalid guard pattern '{pattern}': {e}", file=sys.stderr)
