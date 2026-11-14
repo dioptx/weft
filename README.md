@@ -102,12 +102,28 @@ step: putting the same guard on two steps blocks the command on every step,
 because another owner's guard always matches.
 
 Guards are regular expressions in `command_pattern` (or plain strings). For
-Bash they match the command, for Edit and Write the file path, and for other
-tools the tool name, including MCP names such as `mcp__linear__create_issue`.
+Bash they match the command, for Edit and Write the file path, and for MCP tools
+the tool name first, then commands found in their inputs; other tools match by name only.
 Write patterns that cover flags between command words: `\bgit\b[^|;&\n]*\bpush\b`
 matches both `git push` and `git -C work push`. JSON requires doubled backslashes,
 as in the example above. These are regex checks over tool calls, not a shell
-parser. Existing per-run approvals can allow exact Bash commands.
+parser. Existing per-run approvals can allow exact Bash commands or individual MCP input candidates, not the tool name.
+
+MCP command keys are `command`, `cmd`, `cmdline`, `commandline`, `argv`, `script`, `code`, `shell`, `bash`, `sh`, `zsh`, `powershell`, `pwsh`, `program`, `executable`, `bin`, `stdin`, `stdin_text`, and keys ending in `command`, `cmd` or `script`. Command-list keys are `commands`, `cmds`, `scripts`, and keys ending in those words. Keys are lowercased with underscores, hyphens, dots and spaces removed: `bashCommand` counts, `commandId` does not. Every string nested under these keys is checked; script bodies are checked as one string regardless of language.
+
+A command/program string or list is also joined with sibling `args`, `argv`, `arguments`, `subcommand` or `params`: `{"cmd":"git","argv":["push","origin"]}` and `{"command":"git","subcommand":"push"}` are checked as joined commands. Each sibling argument group and all groups in document order form candidates. Lists in command context flatten nested lists and stringify scalars using JSON spelling (`null`, `true`, numbers), so `{"argv":["git",["push"],"origin"]}` cannot hide a push. A command-list key's direct list still contains separate commands and is never joined across its entries. Objects inside such a list are left out of the joined argv; their strings are still checked. Object-valued argument groups or elements joined to a program fail closed rather than guessing server coercion.
+
+String values that parse as JSON are decoded and scanned repeatedly, including quoted/double-encoded JSON, with at most **8 successful decodes per branch**. A ninth decode blocks when an MCP input guard applies, even if the decoded data is benign. Split-command joining checks both raw and decoded forms, retaining existing raw candidates. Failed parses, including Python's integer digit limit, are ignored without skipping other fields.
+
+To avoid treating prose and file data as commands, keys ending in `transcript` or `postscript` do not start command context. Outside command context, `content`, `text`, `body` and `data` next to a string `path` or `file_path` are file data and are not walked or JSON-decoded. Explicit `mcp_fields` can override these exclusions. Ordinary prose remains data; `{"command":"search","query":"git push tutorial"}` and `{"args":["--title","git","push"],"tool":"note"}` remain allowed because `query` is not an argument key and `args` alone has no program. Literal argument text can still match a command regex: `{"program":"note","args":["--title","git","push"]}` blocks under a push guard. The structural depth limit applies only when a nonempty command candidate is found; deep data-only documents within the JSON-decoding limit stay allowed.
+
+On a dict guard, set `"mcp_input": false` to check only MCP tool names (Bash checks are unchanged), or use `"mcp_fields"` to add command keys for that guard only. Input checking is on by default; only boolean `false` disables it. Extra fields use the same key normalisation; non-list values and non-string entries are ignored, and `mcp_fields` is ignored when input checking is off. For example:
+
+```json
+{"command_pattern": "\\bgit\\b[^|;&\\n]*\\bpush\\b", "message": "git push may run only during ship", "mcp_fields": ["input", "query"]}
+```
+
+When a guard applies, checks fail closed on the shared 1 s extraction/matching budget (Bash included), MCP command candidates nested deeper than 32 levels, or MCP extraction/matching errors; invalid regexes still warn and skip. Deep MCP hook JSON uses an iterative decoder rather than crashing at Python's recursion limit. Reporting failures cannot cancel a denial. The budget starts at the guard loop, not at shell startup or hook-envelope parsing, and is unavailable on platforms or threads without usable signal timers. MCP events include `subject: "tool_name"` for name matches (the name remains the `command`), `"input"` for input matches, or the failure reason. Out of scope: shell obfuscation, anchored patterns missing later lines in multi-line bodies, regex limitations in language-specific syntax (such as quoted argv separators), MCP file-path guards, commands inside Agent prompts, and unknown command fields unless added with `mcp_fields`. Claude Code's hook timeout/exit-1 handling, visibility of exit-2 reasons with merged stderr, and context-mode's real schema or hook rewriting order are not verified here.
 
 Step descriptions and exit conditions guide the agent; the state machine does
 not execute checks or collect human approval automatically. Claude Code hooks
@@ -148,7 +164,7 @@ JSON
 - **Event-sourced state machine** — append-only JSON log; rebuild state with `/wf-rebuild`
 - **Template system** — six bundled workflows (listed below); add your own under `templates/` (project), `~/.weft/templates/` (user-global), or `WEFT_USER_TEMPLATES_DIR`
 - **Smart skills** — 12 slash commands (`wf-start`, `wf-step`, `wf-status`, `wf-resume`, `wf-run-step`, `wf-abort`, `wf-preview`, `wf-rebuild`, `wf-analyze`, `wf-template`, `wf-compose`, `ev-query`)
-- **Guard engine** — commands, file paths and MCP tool names restricted to their owner step via the `PreToolUse` hook
+- **Guard engine** — commands, file paths, MCP tool names and commands inside MCP inputs restricted to their owner step via the `PreToolUse` hook
 - **Plan checker** — `weft check-plan plan.json` validates claim coverage, milestone dates, dependencies and completion criteria with no tracker access
 - **Stop gate** — refuses session exit while steps are incomplete (configurable via `on_fail: block|retry|skip`)
 - **Compaction-safe** — `PreCompact` hook writes a `context.md` projection so the next session resumes mid-workflow

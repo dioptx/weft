@@ -4,6 +4,17 @@ All notable changes to weft are documented here. Format follows [Keep a Changelo
 
 ## [Unreleased]
 
+### Fixed
+- Guards now match commands carried in `mcp__*` tool inputs, not just tool names (issue 2).
+- Deep MCP hook JSON and guard reporting failures no longer turn denials into exit-1 crashes; nonempty non-string tool names fail closed.
+- MCP guards leave transcript/postscript prose, file `content` beside a path, deep data-only documents, and unparseable embedded JSON alone. Explicit command context and `mcp_fields` still apply.
+- MCP guards now join split command/program fields with `args`, `argv`, `arguments`, `subcommand` and `params`, flatten nested argv lists, and stringify scalar elements instead of dropping mixed lists. Raw joined candidates remain checked alongside decoded forms.
+- MCP strings are repeatedly JSON-decoded up to 8 times per branch; a ninth decode fails closed. File `content`, `text`, `body` and `data` beside a path remain data outside command context. Literal argument matches and unsupported object arguments can conservatively block benign calls.
+- MCP guards treat `stdin` and `stdin_text` as command keys, so text piped to a shell (for example mcp-server-commands' `run_process`) is checked. Objects inside command-context lists are skipped when joining argv instead of failing the whole check.
+
+### Added
+- Per-guard `mcp_input` opt-out and `mcp_fields` extra command keys, shown in template previews, plus a shared 1 s guard-check time budget and fail-closed MCP depth limit of 32.
+
 ## [0.4.2] — 2026-11-10
 
 ### Added
