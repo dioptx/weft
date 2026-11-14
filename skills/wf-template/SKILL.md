@@ -48,6 +48,8 @@ Ask: "Should any steps block certain commands? For example, blocking `git push` 
 
 If yes, collect: which step, the regex pattern (e.g. `git push`, `git commit`), and the message to show when blocked.
 
+Guards also match commands inside MCP tool inputs; set `mcp_input: false` on a dict guard for MCP tool-name-only matching, or `mcp_fields` to add command keys used by a server for that guard.
+
 ---
 
 ## Mode B: Edit an existing template

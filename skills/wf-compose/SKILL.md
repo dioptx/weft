@@ -84,7 +84,7 @@ Build a v2 template JSON:
    - `name`: kebab-case identifier
    - `skill`: the matching skill name (e.g., "/staff-review"), or null if manual
    - `on_fail`: "retry" for review/test steps, "block" for critical gates, "continue" for optional steps
-   - `guards`: add logical guards (e.g., no `git push` before review)
+   - `guards`: add logical guards (e.g., no `git push` before review); guards also match commands inside MCP tool inputs, so set `mcp_input: false` on a dict guard for MCP tool-name-only matching or `mcp_fields` to add server-specific command keys for that guard.
    - `description`: one-line summary of what the step does
 
 3. For iterative segments (user said "until", "repeat", "loop", "iterate"):

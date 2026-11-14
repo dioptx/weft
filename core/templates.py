@@ -189,7 +189,12 @@ def template_detail(name: str, project_dir: str | None = None) -> str | None:
             guard_pats = []
             for g in step["guards"]:
                 if isinstance(g, dict):
-                    guard_pats.append(g.get("command_pattern", g.get("pattern", "?")))
+                    pattern = g.get("command_pattern", g.get("pattern", "?"))
+                    if g.get("mcp_input") is False:
+                        pattern += " [mcp input off]"
+                    elif isinstance(g.get("mcp_fields"), list) and g["mcp_fields"]:
+                        pattern += f" [mcp fields: {', '.join(f for f in g['mcp_fields'] if isinstance(f, str))}]"
+                    guard_pats.append(pattern)
                 else:
                     guard_pats.append(str(g))
             parts.append(f"guards: {', '.join(guard_pats)}")
