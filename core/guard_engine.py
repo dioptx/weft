@@ -88,6 +88,7 @@ def _command_key(key: str, fields: frozenset[str]) -> bool:
     return (key in {
         "command", "cmd", "cmdline", "commandline", "argv", "script", "code",
         "shell", "bash", "sh", "zsh", "powershell", "pwsh", "program", "executable", "bin",
+        "stdin", "stdintext",
     } or key.endswith(("command", "cmd", "script")))
 
 

@@ -410,6 +410,22 @@ def mcp_denied(project_dir, request):
     return check
 
 
+class TestStdin:
+    @pytest.mark.parametrize("value", [
+        {"argv": ["bash"], "stdin_text": "git push origin main"},
+        {"command": "sh", "stdin": "set -e\ngit commit -m x"},
+    ])
+    def test_shell_stdin_blocks(self, mcp_denied, value):
+        assert mcp_denied(value)
+
+    @pytest.mark.parametrize("value", [
+        {"argv": ["cat"], "stdin_text": "hello world"},
+        {"command": "wc -l", "stdin": "git log output\n"},
+    ])
+    def test_benign_stdin_is_allowed(self, mcp_denied, value):
+        assert not mcp_denied(value)
+
+
 class TestSplitCommands:
     @pytest.mark.parametrize("program", ["cmd", "command", "program", "executable", "bin"])
     @pytest.mark.parametrize("arguments", ["args", "argv", "arguments", "subcommand", "params"])
