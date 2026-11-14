@@ -162,7 +162,7 @@ def _mcp_candidates(value, fields: frozenset[str]) -> list[str]:
             raise _GuardDepth("JSON decoding limit of 8")
         return decoded
 
-    def argv_text(node, depth, decodings, decode_strings):
+    def argv_text(node, depth, decodings, decode_strings, skip_objects=False):
         parts = []
         pending = [(node, depth, decodings)]
         while pending:
@@ -171,6 +171,10 @@ def _mcp_candidates(value, fields: frozenset[str]) -> list[str]:
                 pending.extend((child, level + 1, encoded) for child in reversed(item))
                 continue
             if isinstance(item, dict):
+                # walk() scans an object's strings itself; only an object joined to a
+                # program needs server coercion we cannot guess, so that one fails closed.
+                if skip_objects:
+                    continue
                 raise TypeError("argv elements must be scalars or lists")
             if decode_strings and isinstance(item, str):
                 try:
@@ -231,7 +235,7 @@ def _mcp_candidates(value, fields: frozenset[str]) -> list[str]:
                 yield child, context, False, depth, decodings
             if context and not separate and node:
                 for decode_strings in (False, True):
-                    add(argv_text(node, depth - 1, decodings, decode_strings), depth)
+                    add(argv_text(node, depth - 1, decodings, decode_strings, True), depth)
 
     # Iterator frames preserve document order without recursing through data-only
     # containers. Depth is enforced when a nonempty command is actually found.

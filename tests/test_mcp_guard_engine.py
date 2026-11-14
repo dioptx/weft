@@ -517,3 +517,9 @@ class TestMixedArguments:
 
     def test_object_argument_fails_closed(self, mcp_denied):
         assert mcp_denied({"program": "search", "params": [{"query": "hello"}]})
+
+    def test_objects_in_command_lists_are_skipped_not_fatal(self, mcp_denied):
+        assert mcp_denied({"argv": ["git", {"note": "x"}, "push"]})
+        # Notion code block: a list of rich-text objects under a "code" key.
+        assert not mcp_denied({"children": [{"type": "code", "code": {
+            "rich_text": [{"text": {"content": "print(1)"}}], "language": "python"}}]})
