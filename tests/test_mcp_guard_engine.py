@@ -60,9 +60,10 @@ def test_command_keys_and_ownership(project_dir, key, owner):
     [{"command": "git push"}],
     '{"command":"git push"}',
     {1: {"command": "git push"}},
+    {"command": "git", "args": ["push", 42]},
 ], ids=["batch", "argv", "command-args", "string-arguments", "args-first",
         "shell-argv", "nested-argv", "context-dict", "context-label", "nested-shell",
-        "json", "nested-json", "json-argv", "python", "top-list", "top-json", "nonstring-key"])
+        "json", "nested-json", "json-argv", "python", "top-list", "top-json", "nonstring-key", "mixed-args"])
 def test_command_shapes(project_dir, value):
     start(project_dir)
     assert evaluate(project_dir, value)["blocked"] is True
@@ -74,7 +75,6 @@ def test_command_shapes(project_dir, value):
     {"description": "git push", "text": "git push", "commandId": "git push"},
     {"id": "ABC-1"}, {"input": "git push"}, {"payload": "{broken"},
     {"code": "  \n", "cmd": ""}, {"code": 42},
-    {"command": "git", "args": ["push", 42]},
     None, 42, ["git push"], "git push",
 ])
 def test_noncommands_and_separate_commands_stay_allowed(project_dir, value):
