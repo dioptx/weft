@@ -12,4 +12,5 @@ STATE="${CLAUDE_PROJECT_DIR:-.}/.claude/weft/state.json"
 grep -qE '"guards": \[$' "$STATE" || exit 0
 
 INPUT=$(cat)
-echo "$INPUT" | python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" guard 2>&1
+# Keep stderr separate: Claude Code shows an exit-2 block's stderr to the model.
+echo "$INPUT" | python3 "${CLAUDE_PLUGIN_ROOT}/core/cli.py" guard

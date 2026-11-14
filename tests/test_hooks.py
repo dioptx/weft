@@ -109,6 +109,20 @@ class TestPreToolUseHook:
         combined = (result.stdout + result.stderr).lower()
         assert "commit" in combined or "scope" in combined
 
+    def test_block_reason_goes_to_stderr(self, project_dir, guarded_template):
+        """Claude Code shows a PreToolUse exit-2 block's stderr to the model;
+        a reason on stdout surfaces as "No stderr output"."""
+        pdir = str(project_dir)
+        state_machine.start_workflow(guarded_template, "s1", pdir)
+        result = run_hook(
+            "weft-pretooluse.sh",
+            {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'x'"}},
+            pdir,
+        )
+        assert result.returncode == 2
+        assert "No commits until scope confirmed" in result.stderr
+        assert result.stdout == ""
+
     def test_allows_unguarded_command(self, project_dir, guarded_template):
         """Unguarded command passes through."""
         pdir = str(project_dir)
