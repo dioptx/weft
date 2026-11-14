@@ -215,8 +215,10 @@ def _mcp_candidates(value, fields: frozenset[str]) -> list[str]:
             for key, child in node.items():
                 key = _normalise(key) if isinstance(key, str) else ""
                 command = _command_key(key, fields)
-                commands = key.endswith(("commands", "cmds", "scripts"))
-                if key in ("content", "text", "body", "data") and file_content and not context and not command:
+                commands = key.endswith(("commands", "cmds", "scripts")) \
+                    and not key.endswith(("transcripts", "postscripts"))
+                if key in ("content", "text", "body", "data") and file_content and isinstance(child, str) \
+                        and not context and not command:
                     continue
                 yield child, context or command or commands, commands, depth, decodings
                 if command and isinstance(child, (str, list)):
@@ -309,7 +311,7 @@ def _match(guards, hook_input, project_dir):
                         if candidate.strip() in approved:
                             continue
                     if regex.search(candidate):
-                        if subject == "legacy" and tool_name not in ("Bash", "Edit", "Write"):
+                        if subject == "legacy" and mcp:
                             subject = "tool_name"
                         return step, pattern, guard, candidate, subject
         except re.error as e:
@@ -361,7 +363,7 @@ def evaluate(hook_input: dict, project_dir: str | None = None) -> dict | None:
 
     data = {"workflow_id": state["workflow_id"], "step_id": step["id"],
             "step_name": step["name"], "pattern": pattern,
-            "command": command[:2000], "tool": tool_name}
+            "command": command if subject == "legacy" else command[:2000], "tool": tool_name}
     # Keep the existing Bash/Edit/Write event schema for legacy consumers.
     if subject != "legacy":
         data["subject"] = subject

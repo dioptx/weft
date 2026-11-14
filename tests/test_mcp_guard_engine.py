@@ -108,6 +108,18 @@ def test_name_checked_before_input_and_approval(project_dir, mcp_input):
     assert (data["subject"], data["command"]) == ("tool_name", MCP)
 
 
+@pytest.mark.parametrize("tool, value, pattern", [
+    ("Bash", {"command": "git push " + "x" * 3000}, PUSH),
+    ("Read", {"file_path": "/a"}, r"^Read$"),
+])
+def test_non_mcp_events_keep_their_schema(project_dir, tool, value, pattern):
+    start(project_dir, pattern)
+    evaluate(project_dir, value, tool)
+    data = event_store.query(str(project_dir), event_type="wf.guard_blocked")[-1]["data"]
+    assert "subject" not in data
+    assert data["command"] == value.get("command", tool)
+
+
 def test_extra_fields_are_normalised_and_guard_local(project_dir):
     state = state_machine.start_workflow({"name": "fields", "steps": [
         {"name": "read"},
@@ -435,6 +447,11 @@ class TestSplitCommands:
 
     def test_transcript_stays_prose(self, mcp_denied):
         assert not mcp_denied({"transcript": "then I ran git push and it worked"})
+        assert not mcp_denied({"transcripts": ["we agreed nobody runs git push on friday"]})
+
+    def test_structured_body_beside_path_is_checked(self, mcp_denied):
+        assert mcp_denied({"method": "POST", "path": "/containers/web/exec",
+                           "body": {"Cmd": ["git", "push"]}})
 
     def test_search_query_is_not_an_argument(self, mcp_denied):
         assert not mcp_denied({"command": "search", "query": "git push tutorial"})
